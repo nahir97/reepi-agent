@@ -239,10 +239,11 @@ click away and none of it is on the default screen.
   default so a directive block that already has text is never quietly replaced. Because what it
   writes *is* the frozen prefix, every turn reports what it made, what it revised, what it refused
   and which blocks moved (measured: one card added re-priced the cast block and everything behind it
-  and nothing before it, at 0.671 → 0.573 predicted hit rate). The conversation is stored, so a
-  reload lands you back in it with every receipt intact; **Stop** ends a turn without recording
-  anything, **New chat** clears the conversation and deletes none of the content. It never writes
-  prose, dialogue or your persona, and it cannot delete anything.
+  and nothing before it, at 0.671 → 0.573 predicted hit rate). Both controls sit beside the
+  composer, because they describe the message being sent rather than a form to fill in first. The
+  conversation is stored, so a reload lands you back in it with every receipt intact; **Stop** ends
+  a turn without recording anything, **New chat** clears the conversation and deletes none of the
+  content. It never writes prose, dialogue or your persona, and it cannot delete anything.
 - **Prompt templates and macros.** The blocks you author — voice contract, genre, style, bible,
   scenario, exemplars, instruction — can be saved as named templates and applied to any story in
   one action, singly or several at once. Every block accepts `{{macros}}` (`{{char}}`, `{{user}}`,

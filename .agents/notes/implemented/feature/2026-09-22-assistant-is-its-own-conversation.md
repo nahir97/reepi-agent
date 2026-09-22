@@ -109,6 +109,9 @@ is not a conversation, and the page would have to invent a summary of what was a
 - **The receipt is historical data.** A receipt no longer describes the live row it names — someone
   may have edited the card since. That is the point (it is what happened), and the page says so by
   reading the receipt from the message rather than re-deriving it from the bundle.
+- **The page is a chat surface.** The layout this conversation lives on — bubbles on both sides, the
+  composer pinned at the bottom, the target and the rewrite consent beside the input — is its own
+  recorded decision: [the creation assistant page is a chat surface](2026-09-22-creator-page-as-chat.md).
 - **One more surface in the rail**, and the first-run screen can now be left without creating a story.
 - **The stopped turn's spend is unrecorded.** An aborted round never reaches `recordSideCall`, so its
   real cost is not in the ledger. That gap is shared with an aborted narration turn and is not

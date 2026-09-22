@@ -28,7 +28,9 @@ export function PageBand({
   actions,
 }: {
   title: string;
-  hint?: string;
+  /** Context under the title. A node, not a string, so a page can drop the figure
+      that does not fit a phone's band while keeping the sentence around it. */
+  hint?: ReactNode;
   onBack: () => void;
   actions?: ReactNode;
 }) {
