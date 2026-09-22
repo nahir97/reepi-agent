@@ -274,7 +274,7 @@ function EmptyTranscript() {
       <div className="mt-6 flex flex-wrap gap-2">
         <button type="button" className="btn btn-primary" onClick={() => openDialog({ kind: 'new-story' })}>
           <IconPlus size={13} />
-          Start from a template
+          New story
         </button>
         {stories.length === 0 ? (
           <button type="button" className="btn" onClick={() => openDialog({ kind: 'import-export' })}>

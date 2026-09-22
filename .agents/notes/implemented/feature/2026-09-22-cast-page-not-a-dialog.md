@@ -86,7 +86,7 @@ next request carries. And a surface that must survive being covered should be a 
 In the running application through the browser:
 
 - **The row exists where the problem was.** The library rail's studio list reads `Cast`,
-  `Cost & cache`, `Story settings`, `Import & export`, `Duplicate story`.
+  `Cost & cache`, `Story settings`, `Prompt templates`, `Import & export`, `Duplicate story`.
 - **The page replaces the centre column**: on `Cast` the document has no composer and no app
   header, the page's own band reads `Cast · 5 cards · 175 tokens in the prefix`, and the library
   rail is still present beside it with its story list, scenes and studio rows.

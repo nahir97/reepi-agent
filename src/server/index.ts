@@ -26,6 +26,7 @@ import libraryRoutes from './routes/library.ts';
 import memoryRoutes from './routes/memory.ts';
 import portabilityRoutes from './routes/portability.ts';
 import insightsRoutes from './routes/insights.ts';
+import templateRoutes from './routes/templates.ts';
 
 /**
  * Reepi server.
@@ -110,6 +111,7 @@ app.route('/api', libraryRoutes);
 app.route('/api', memoryRoutes);
 app.route('/api', portabilityRoutes);
 app.route('/api', insightsRoutes);
+app.route('/api', templateRoutes);
 
 /* ------------------------------------------------------------ static */
 

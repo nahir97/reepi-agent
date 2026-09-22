@@ -7,15 +7,18 @@
  */
 
 import { asInt, asString, pickPatch } from '../../http.ts';
-import { MEMORY_KINDS, NOTE_KINDS } from '../../../shared/types.ts';
+import { MEMORY_KINDS, NOTE_KINDS, isEditableBlock } from '../../../shared/types.ts';
+import type { PromptTemplateBody } from '../../../shared/api.ts';
 import type {
   Character,
   DirectorNote,
+  EditableBlock,
   LoreEntry,
   Memory,
   Message,
   MessageUsage,
   Persona,
+  PromptTemplate,
   Scene,
   SceneStateField,
   Story,
@@ -469,6 +472,56 @@ export function sanitiseMessage(raw: Partial<Message>): Sanitised<Message> {
     const parsed = finiteOf(value);
     if (parsed === null) rejected.push(field);
     else patch[field] = Math.trunc(parsed);
+  }
+
+  return { patch, rejected };
+}
+
+const TEMPLATE_TEXT_FIELDS = ['name', 'blurb'] as const;
+const TEMPLATE_FIELDS = [...TEMPLATE_TEXT_FIELDS, 'blocks', 'sortOrder'] as const;
+
+/**
+ * Block text as sent by the client.
+ *
+ * Every key must be an editable block: a template that "fills" a block the
+ * composer derives from rows would look saved and do nothing. Unknown keys are
+ * reported by name so the caller learns which one was refused, and whitespace-only
+ * text is dropped — a template that fills nothing is refused by the route rather
+ * than stored as an empty promise.
+ */
+function templateBlocksOf(
+  value: unknown,
+): { blocks: Partial<Record<EditableBlock, string>> } | { bad: string } {
+  const record = objectOf(value);
+  if (!record) return { bad: 'blocks' };
+  const blocks: Partial<Record<EditableBlock, string>> = {};
+  for (const [key, text] of Object.entries(record)) {
+    if (!isEditableBlock(key) || typeof text !== 'string') return { bad: `blocks.${key}` };
+    if (text.trim()) blocks[key] = text;
+  }
+  return { blocks };
+}
+
+export function sanitisePromptTemplate(raw: PromptTemplateBody): Sanitised<PromptTemplate> {
+  const picked = pickPatch<PromptTemplateBody>(raw, TEMPLATE_FIELDS);
+  const patch: Partial<PromptTemplate> = {};
+  const rejected: string[] = [];
+
+  for (const field of TEMPLATE_TEXT_FIELDS) {
+    const value = picked[field];
+    if (value === undefined) continue;
+    if (typeof value === 'string') patch[field] = value;
+    else rejected.push(field);
+  }
+  if (picked.blocks !== undefined) {
+    const parsed = templateBlocksOf(picked.blocks);
+    if ('blocks' in parsed) patch.blocks = parsed.blocks;
+    else rejected.push(parsed.bad);
+  }
+  if (picked.sortOrder !== undefined) {
+    const order = finiteOf(picked.sortOrder);
+    if (order === null) rejected.push('sortOrder');
+    else patch.sortOrder = Math.trunc(order);
   }
 
   return { patch, rejected };

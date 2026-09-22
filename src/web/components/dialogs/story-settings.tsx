@@ -7,29 +7,26 @@
  * draft, so a change to the block schema and the code that reads it are one edit.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatTokens } from '../../../shared/cost.ts';
-import { BLOCK_LABELS, BLOCK_VOLATILITY, EFFORT_LABELS, MODELS } from '../../../shared/types.ts';
-import type { BlockKind, ModelId, ReasoningEffort, Story } from '../../../shared/types.ts';
+import {
+  BLOCK_LABELS,
+  BLOCK_VOLATILITY,
+  EDITABLE_BLOCKS,
+  EDITABLE_BLOCK_FIELD,
+  EFFORT_LABELS,
+  filledBlocks,
+  MODELS,
+  templateStoryPatch,
+} from '../../../shared/types.ts';
+import type { EditableBlock, ModelId, PromptTemplate, ReasoningEffort, Story } from '../../../shared/types.ts';
 import { DEFAULT_CALIBRATION, estimateTokens } from '../../../shared/tokens.ts';
 import { useStore } from '../../store.ts';
-import { IconAlert } from '../icons.tsx';
+import { IconAlert, IconChevronDown } from '../icons.tsx';
+import { MacroLine, MacroPicker, insertMacro } from '../MacroPicker.tsx';
 import { Shell, blockWarning } from './shell.tsx';
 
 /* ------------------------------------------------------------- story settings */
-
-/** Where a block's text lives on the `Story` row, when it is editable at all. */
-const BLOCK_FIELD: Partial<Record<BlockKind, keyof Story>> = {
-  contract: 'contract',
-  genre: 'genre',
-  style: 'style',
-  story: 'bible',
-  scenario: 'scenario',
-  exemplars: 'exemplars',
-  instruct: 'instruct',
-};
-
-const STORY_BLOCKS: BlockKind[] = ['contract', 'genre', 'style', 'story', 'scenario', 'exemplars', 'instruct'];
 
 export function StorySettingsDialog() {
   const bundle = useStore((state) => state.bundle);
@@ -37,9 +34,14 @@ export function StorySettingsDialog() {
   const openDialog = useStore((state) => state.openDialog);
   const setTheme = useStore((state) => state.setTheme);
   const streaming = useStore((state) => state.streaming.active);
+  const macros = useStore((state) => state.macros);
+  const templates = useStore((state) => state.promptTemplates);
 
   const story = bundle?.story ?? null;
   const [draft, setDraft] = useState<Story | null>(story);
+  const fields = useRef(new Map<EditableBlock, HTMLTextAreaElement | null>());
+  /** The last block whose field held the caret, so inserting a macro lands there. */
+  const caretIn = useRef<EditableBlock | null>(null);
 
   useEffect(() => {
     setDraft(story);
@@ -72,15 +74,35 @@ export function StorySettingsDialog() {
     openDialog(null);
   };
 
-  const changedBlocks = STORY_BLOCKS.filter((kind) => {
-    const field = BLOCK_FIELD[kind];
-    return field !== undefined && draft[field] !== story[field];
-  });
+  const changedBlocks = EDITABLE_BLOCKS.filter(
+    (kind) => draft[EDITABLE_BLOCK_FIELD[kind]] !== story[EDITABLE_BLOCK_FIELD[kind]],
+  );
+
+  /** Write one template's text for one block into the draft. Saving still decides. */
+  const applyTemplate = (block: EditableBlock, template: PromptTemplate): void => {
+    const patch = templateStoryPatch(template.blocks, [block]);
+    for (const [field, text] of Object.entries(patch)) {
+      if (text !== undefined) setField(field as keyof Story, text);
+    }
+  };
+
+  const insert = (block: EditableBlock, token: string): void => {
+    const field = EDITABLE_BLOCK_FIELD[block];
+    const current = String(draft[field] ?? '');
+    const { value, caret } = insertMacro(fields.current.get(block) ?? null, current, token, caretIn.current === block);
+    setField(field, value);
+    requestAnimationFrame(() => {
+      const node = fields.current.get(block);
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(caret, caret);
+    });
+  };
 
   return (
     <Shell
       title="Story settings"
-      subtitle="Every block below is a real slice of the request, in payload order."
+      subtitle="Every block below is a real slice of the request, in payload order. Reusable text lives in Prompt templates, from the studio menu."
       onClose={() => openDialog(null)}
       wide
       footer={
@@ -124,16 +146,15 @@ export function StorySettingsDialog() {
       ) : null}
 
       <div className="space-y-3">
-        {STORY_BLOCKS.map((kind) => {
-          const field = BLOCK_FIELD[kind];
-          if (field === undefined) return null;
+        {EDITABLE_BLOCKS.map((kind) => {
+          const field = EDITABLE_BLOCK_FIELD[kind];
           const value = String(draft[field] ?? '');
           const tokens = estimateTokens(value, DEFAULT_CALIBRATION);
           const volatility = BLOCK_VOLATILITY[kind];
           const changed = value !== String(story[field] ?? '');
           return (
             <div key={kind} className="rounded-lg border border-border p-2.5" style={{ background: 'var(--bg-sunken)' }}>
-              <div className="mb-1.5 flex flex-wrap items-baseline gap-2">
+              <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                 <span className="eyebrow">{BLOCK_LABELS[kind]}</span>
                 <span className="num text-[10px] text-faint">{formatTokens(tokens)} tok</span>
                 <span
@@ -152,17 +173,28 @@ export function StorySettingsDialog() {
                   volatility {volatility}
                 </span>
                 {changed ? <span className="chip chip-miss">pending edit</span> : null}
+                {/* Both controls sit on the block they act on, and both write into
+                    the draft: nothing reaches the database until Save. */}
+                <TemplateApplyMenu templates={templates} block={kind} onApply={(template) => applyTemplate(kind, template)} />
+                <MacroPicker macros={macros} onInsert={(token) => insert(kind, token)} />
               </div>
               <label className="sr-only" htmlFor={`block-${kind}`}>
                 {BLOCK_LABELS[kind]}
               </label>
               <textarea
                 id={`block-${kind}`}
+                ref={(node) => {
+                  fields.current.set(kind, node);
+                }}
                 className="field resize-y font-serif leading-relaxed"
                 rows={kind === 'contract' || kind === 'story' ? 6 : 3}
                 value={value}
+                onFocus={() => {
+                  caretIn.current = kind;
+                }}
                 onChange={(event) => setField(field, event.target.value as Story[typeof field])}
               />
+              <MacroLine macros={macros} text={value} />
               <p className="mt-1 text-[10.5px] leading-snug text-faint">{blockWarning(kind, tokens)}</p>
             </div>
           );
@@ -330,5 +362,128 @@ export function StorySettingsDialog() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+/* ------------------------------------------------------------ apply a template */
+
+/**
+ * The per-block template menu.
+ *
+ * Templates that were written *for* this block come first, because that is the
+ * common case; the rest follow under a divider, since a template is just text and
+ * refusing to insert it here would be a rule with no cost model behind it. The
+ * target is a filing hint, not a lock — but the order says which one it is.
+ *
+ * Applying **replaces** the block's text in the draft. Nothing is written until
+ * Save, so the destructive part is one Cancel away, and the dialog's own pending
+ * banner then names the blocks that changed.
+ */
+function TemplateApplyMenu({
+  templates,
+  block,
+  onApply,
+}: {
+  templates: PromptTemplate[];
+  block: EditableBlock;
+  onApply: (template: PromptTemplate) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const forBlock = templates.filter((template) => (template.blocks[block] ?? '').trim().length > 0);
+  const others = templates.filter((candidate) => !forBlock.includes(candidate));
+
+  return (
+    <div className="min-w-0">
+      <button
+        type="button"
+        className="chip flex items-center gap-1"
+        style={{ borderColor: 'var(--border)' }}
+        onClick={() => setOpen((value) => !value)}
+        disabled={templates.length === 0}
+        aria-expanded={open}
+        title={
+          templates.length === 0
+            ? 'No templates yet — write one from Prompt templates in the studio menu'
+            : 'Replace this block with a saved template'
+        }
+      >
+        <span className="text-dim">Templates</span>
+        <span className="text-faint">
+          <IconChevronDown size={9} />
+        </span>
+      </button>
+
+      {open ? (
+        <div className="mt-1.5 rounded-lg border border-border p-2" style={{ background: 'var(--bg)' }}>
+          <p className="mb-1.5 text-[10.5px] leading-snug text-faint">
+            Replaces what is in this block now. Unsaved until you press Save.
+          </p>
+          {templates.length === 0 ? (
+            <p className="text-[11.5px] leading-snug text-dim">
+              No templates yet. Studio → Prompt templates writes them, and a new one can be duplicated from the
+              built-in set.
+            </p>
+          ) : (
+            <ul className="max-h-[min(18rem,40vh)] space-y-0.5 overflow-y-auto">
+              {forBlock.map((template) => (
+                <TemplateRow
+                  key={template.id}
+                  template={template}
+                  chosen
+                  onPick={() => {
+                    setOpen(false);
+                    onApply(template);
+                  }}
+                />
+              ))}
+              {forBlock.length > 0 && others.length > 0 ? (
+                <li className="eyebrow px-1.5 pt-1.5">Written for other blocks</li>
+              ) : null}
+              {others.map((template) => (
+                <TemplateRow
+                  key={template.id}
+                  template={template}
+                  chosen={false}
+                  onPick={() => {
+                    setOpen(false);
+                    onApply(template);
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TemplateRow({
+  template,
+  chosen,
+  onPick,
+}: {
+  template: PromptTemplate;
+  chosen: boolean;
+  onPick: () => void;
+}) {
+  const blocks = filledBlocks(template);
+  return (
+    <li>
+      <button
+        type="button"
+        className="w-full rounded-md px-1.5 py-1 text-left row-hover"
+        onClick={onPick}
+        title={template.blurb || template.name}
+      >
+        <span className="flex items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-[11.5px]">{template.name}</span>
+          {chosen ? <span className="chip shrink-0">for this block</span> : null}
+        </span>
+        <span className="mt-0.5 block truncate text-[10.5px] text-faint">
+          {blocks.map((kind) => BLOCK_LABELS[kind]).join(' · ')}
+        </span>
+      </button>
+    </li>
   );
 }

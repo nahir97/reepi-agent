@@ -7,8 +7,28 @@
  * has no runtime cost and cannot create an import cycle.
  */
 
-import type { AccountInfo, DiagnoseReport, ExportFormat, Insights, StoryBundle, StoryTemplateId, WarmupResult } from '../../shared/api.ts';
-import type { ChatRequest, DirectorNote, Message, PayloadPlan, Scene, Story, Theme } from '../../shared/types.ts';
+import type {
+  AccountInfo,
+  DiagnoseReport,
+  ExportFormat,
+  Insights,
+  MacroInfo,
+  PromptTemplateBody,
+  StoryBundle,
+  StoryTemplateId,
+  WarmupResult,
+} from '../../shared/api.ts';
+import type {
+  ChatRequest,
+  DirectorNote,
+  EditableBlock,
+  Message,
+  PayloadPlan,
+  PromptTemplate,
+  Scene,
+  Story,
+  Theme,
+} from '../../shared/types.ts';
 
 export type RightTab = 'blocks' | 'cast' | 'persona' | 'lore' | 'memory' | 'scene' | 'director';
 
@@ -73,6 +93,7 @@ export type Dialog =
   | { kind: 'story-settings' }
   | { kind: 'import-export' }
   | { kind: 'new-story' }
+  | { kind: 'prompt-templates' }
   | { kind: 'insights' }
   | { kind: 'card'; card: CardKind; id: string }
   | { kind: 'confirm'; title: string; body: string; confirmLabel: string; danger: boolean; run: () => void }
@@ -108,6 +129,16 @@ export type Store = {
   warmup: WarmupResult | null;
   busy: string | null;
 
+  /* ------------------------------------------------------ prompt templates */
+  /** Starters first, then the writer's own. App-scoped, never story data. */
+  promptTemplates: PromptTemplate[];
+  /**
+   * The macro reference, resolved for the open story when there is one. Held in
+   * the store rather than fetched by each dialog: the template editor and the
+   * story editor show the same values, and two fetches would be two answers.
+   */
+  macros: MacroInfo[];
+
   /* -------------------------------------------------------------- chrome */
   theme: Theme;
   /** Whether the payload rail is open on a wide screen. Persisted. */
@@ -128,6 +159,20 @@ export type Store = {
   duplicateStory: (storyId: string) => Promise<void>;
   archiveStory: (storyId: string) => Promise<void>;
   updateStory: (patch: Partial<Story>) => Promise<void>;
+
+  loadTemplates: () => Promise<void>;
+  /** Create (`id === null`) or update a template, and adopt the stored row. */
+  saveTemplate: (id: string | null, body: PromptTemplateBody) => Promise<PromptTemplate | null>;
+  removeTemplate: (id: string) => Promise<void>;
+  loadMacros: () => Promise<void>;
+  /**
+   * Write a template's blocks into the open story, immediately.
+   *
+   * The library applies through the same story PATCH the editor saves with, so
+   * there is one write path. `only` limits it to one block, which is what the
+   * per-block menu in the story editor means by "apply".
+   */
+  applyTemplate: (template: PromptTemplate, only?: readonly EditableBlock[]) => Promise<void>;
 
   createScene: (patch?: Partial<Scene>) => Promise<void>;
   switchScene: (sceneId: string) => Promise<void>;

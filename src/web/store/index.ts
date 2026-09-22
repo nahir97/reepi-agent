@@ -21,6 +21,7 @@ import { instrumentsSlice } from './slices/instruments.ts';
 import { librarySlice } from './slices/library.ts';
 import { messagesSlice } from './slices/messages.ts';
 import { portabilitySlice } from './slices/portability.ts';
+import { templatesSlice } from './slices/templates.ts';
 import { turnsSlice } from './slices/turns.ts';
 import type { Store } from './types.ts';
 
@@ -33,6 +34,7 @@ export const useStore = create<Store>((set, get) => {
     ...messagesSlice(slice),
     ...instrumentsSlice(slice),
     ...portabilitySlice(slice),
+    ...templatesSlice(slice),
     ...gettersSlice(slice),
   };
 });

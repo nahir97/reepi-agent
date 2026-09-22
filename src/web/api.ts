@@ -17,6 +17,8 @@ import type {
   ExportFormat,
   ImportBody,
   Insights,
+  MacroInfo,
+  PromptTemplateBody,
   StoryBundle,
   StoryCreateBody,
   SummaryResult,
@@ -33,6 +35,7 @@ import type {
   Message,
   PayloadPlan,
   Persona,
+  PromptTemplate,
   ReasoningEffort,
   Role,
   Scene,
@@ -402,6 +405,29 @@ export const api = {
 
   importBundle: (body: ImportBody, signal?: AbortSignal) =>
     send<Story>('/api/import', json('POST', body, signal)),
+
+  /* ---------------------------------------------------- prompt templates */
+
+  templates: {
+    list: (signal?: AbortSignal) => send<PromptTemplate[]>('/api/templates', json('GET', undefined, signal)),
+    create: (body: PromptTemplateBody, signal?: AbortSignal) =>
+      send<PromptTemplate>('/api/templates', json('POST', body, signal)),
+    update: (id: string, patch: PromptTemplateBody, signal?: AbortSignal) =>
+      send<PromptTemplate>(`/api/templates/${enc(id)}`, json('PATCH', patch, signal)),
+    remove: (id: string, signal?: AbortSignal) =>
+      send<{ ok: true }>(`/api/templates/${enc(id)}`, json('DELETE', undefined, signal)),
+  },
+
+  /**
+   * The macro reference, resolved for one story. Omitting `storyId` is legal and
+   * returns the same rows with `value: null` — a template can be written with no
+   * story open.
+   */
+  macros: (storyId?: string | null, signal?: AbortSignal) =>
+    send<MacroInfo[]>(
+      storyId ? `/api/macros?storyId=${enc(storyId)}` : '/api/macros',
+      json('GET', undefined, signal),
+    ),
 };
 
 /* ------------------------------------------------------------------ export */

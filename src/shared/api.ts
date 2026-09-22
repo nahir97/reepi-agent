@@ -7,11 +7,13 @@
 import type {
   Calibration,
 } from './tokens.ts';
+import type { MacroGroup, MacroName } from './macros.ts';
 import type {
   Character,
   CostEvent,
   CostEventKind,
   DirectorNote,
+  EditableBlock,
   LoreEntry,
   Memory,
   Message,
@@ -145,6 +147,35 @@ export type SummaryResult = {
 export type StoryCreateBody = Partial<Story> & { title: string; template?: StoryTemplateId };
 
 export type StoryTemplateId = 'hollow-court' | 'noir' | 'cozy' | 'space-opera' | 'blank';
+
+/* -------------------------------------------------------- prompt templates */
+
+/**
+ * The body of a template write. The entity itself is a stored row and lives in
+ * `types.ts` with the other entities; this is only what a client may send.
+ */
+export type PromptTemplateBody = {
+  name?: string;
+  blurb?: string;
+  blocks?: Partial<Record<EditableBlock, string>>;
+  sortOrder?: number;
+};
+
+/**
+ * One row of the macro reference the editor shows.
+ *
+ * `value` is resolved against a story when the caller names one and is `null`
+ * otherwise — the editor still lists names, labels and hints, so a template can
+ * be written with no story open. The values come from the composer's own
+ * resolver, so the reference cannot advertise something the payload would not do.
+ */
+export type MacroInfo = {
+  name: MacroName;
+  label: string;
+  group: MacroGroup;
+  hint: string;
+  value: string | null;
+};
 
 export type ImportBody = {
   /** `json` is our own bundle, `chara` is a SillyTavern v2 PNG, `text` is plain prose. */

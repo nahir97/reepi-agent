@@ -20,8 +20,11 @@ import {
   type Story,
   type Thread,
 } from '../shared/types.ts';
+import type { MacroName } from '../shared/macros.ts';
 import type { WireMessage } from './deepseek.ts';
 import { groupByPosition, renderLore } from './lorebook.ts';
+import { expandMacros, macroContextOf } from './macros.ts';
+import { renderCast, renderState, renderThreads } from './render.ts';
 import type { PrefixRecord } from './store/index.ts';
 
 /**
@@ -92,7 +95,7 @@ export type Composed = {
   messages: WireMessage[];
   plan: PayloadPlan;
   /** Rendered blocks, kept for the inspector and for the prefix record. */
-  blocks: { kind: BlockKind; text: string; hash: string; tokens: number }[];
+  blocks: { kind: BlockKind; text: string; hash: string; tokens: number; macros: MacroName[] }[];
   /** True when a trailing assistant prefill must be sent with `prefix: true`. */
   usesPrefixCompletion: boolean;
 };
@@ -119,31 +122,6 @@ const HEADINGS: Partial<Record<BlockKind, string>> = {
   instruct: 'Instruction',
 };
 
-function renderCast(characters: readonly Character[]): string {
-  if (characters.length === 0) return '';
-  const cards = characters.map((character) => {
-    const lines = [`### ${character.name}`];
-    if (character.tagline) lines.push(`*${character.tagline}*`);
-    if (character.description) lines.push(character.description);
-    if (character.personality) lines.push(`Personality: ${character.personality}`);
-    if (character.speech) lines.push(`Speech: ${character.speech}`);
-    if (character.scenario) lines.push(`Scene role: ${character.scenario}`);
-    return lines.join('\n');
-  });
-  return cards.join('\n\n');
-}
-
-function renderThreads(threads: readonly Thread[]): string {
-  const open = threads.filter((thread) => thread.status === 'open');
-  if (open.length === 0) return '';
-  return `Unresolved threads the narrator is holding:\n${open.map((thread) => `- ${thread.label}`).join('\n')}`;
-}
-
-function renderState(scene: Scene): string {
-  if (scene.state.length === 0) return '';
-  return scene.state.map((field) => `${field.key}: ${field.value}`).join('\n');
-}
-
 function truncate(text: string, limit = 240): string {
   const clean = text.replace(/\s+/g, ' ').trim();
   return clean.length <= limit ? clean : `${clean.slice(0, limit - 1)}…`;
@@ -152,13 +130,24 @@ function truncate(text: string, limit = 240): string {
 /**
  * Build every block, then sort by volatility class. Blocks render exactly as the
  * model sees them — the inspector shows these strings and nothing more.
+ *
+ * Macros are expanded here, in the one place a block becomes text, so the hash,
+ * the token count and the inspector all see the resolved string. The transcript
+ * is the exception: it is a record of what was said, not a template, and
+ * re-resolving it against live state would rewrite the cached prefix every time a
+ * persona or a card changed. The writer's own turn is exempt for the same reason —
+ * expanding it on the turn it is typed but not once it is history would make the
+ * tail of the transcript block differ from what was sent, which is a miss on every
+ * turn rather than a feature.
  */
 export function compose(input: ComposerInput, previous: PrefixRecord | null): Composed {
   const { story, scene, calibration } = input;
-  const blocks: { kind: BlockKind; text: string; hash: string; tokens: number }[] = [];
+  const blocks: { kind: BlockKind; text: string; hash: string; tokens: number; macros: MacroName[] }[] = [];
+  const macroContext = macroContextOf(story, scene, input.threads);
 
   const push = (kind: BlockKind, body: string) => {
-    const text = body.trim();
+    const resolved = kind === 'history' ? { text: body, macros: [] as MacroName[] } : expandMacros(body, macroContext);
+    const text = resolved.text.trim();
     if (!text) return;
     const heading = HEADINGS[kind];
     const rendered = heading ? `## ${heading}\n${text}` : text;
@@ -167,6 +156,7 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
       text: rendered,
       hash: hashContent(kind, rendered),
       tokens: estimateTokens(rendered, calibration),
+      macros: resolved.macros,
     });
   };
 
@@ -244,7 +234,11 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
   const depthHits = input.loreHits
     .filter((hit) => hit.position === 'depth')
     .sort((a, b) => b.depth - a.depth);
-  const depthLore = renderLore(depthHits, '');
+  /* Depth lore rides outside the block list, so its macros are resolved here
+     rather than in `push` — the writer should not have to remember which lore
+     position a `{{char}}` works in. It sits in the volatile tail, so nothing
+     frozen depends on the result. */
+  const depthLore = expandMacros(renderLore(depthHits, ''), macroContext).text;
 
   /* ---- order and render ---- */
 
@@ -289,8 +283,9 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
   /* ---- Chat Prefix Completion ---- */
 
   let usesPrefixCompletion = false;
-  if (input.prefill.trim()) {
-    messages.push({ role: 'assistant', content: input.prefill, prefix: true });
+  const prefill = expandMacros(input.prefill, macroContext).text;
+  if (prefill.trim()) {
+    messages.push({ role: 'assistant', content: prefill, prefix: true });
     usesPrefixCompletion = true;
   }
 
@@ -380,6 +375,7 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
     hash: block.hash,
     changed: previous ? previous.blockHashes[block.kind] !== block.hash : true,
     stablePrefixTokens,
+    macros: block.macros,
     preview: truncate(block.text, 400),
   }));
 
@@ -412,7 +408,7 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
 
 function buildWarnings(
   input: ComposerInput,
-  blocks: readonly { kind: BlockKind; tokens: number; text: string }[],
+  blocks: readonly { kind: BlockKind; tokens: number; text: string; macros: MacroName[] }[],
   totalTokens: number,
 ): string[] {
   const warnings: string[] = [];
@@ -421,6 +417,18 @@ function buildWarnings(
   if (largest && totalTokens > 0 && largest.tokens / totalTokens > 0.6) {
     warnings.push(
       `"${BLOCK_LABELS[largest.kind]}" is ${Math.round((largest.tokens / totalTokens) * 100)}% of the payload.`,
+    );
+  }
+
+  /* A macro in a frozen block is a real cache decision: the block is re-rendered
+     from live story state every turn, so the thing the macro reads becomes part of
+     the prefix's stability. Said here, where the plan is read, rather than left to
+     be discovered in the ledger. */
+  for (const block of blocks) {
+    if (block.macros.length === 0 || BLOCK_VOLATILITY[block.kind] !== 0) continue;
+    const names = block.macros.map((name) => `{{${name}}}`).join(', ');
+    warnings.push(
+      `"${BLOCK_LABELS[block.kind]}" expands ${names}, so that value sits in the frozen prefix: change it — a persona switch, an edited card — and this block and everything behind it re-pay at the miss price.`,
     );
   }
 

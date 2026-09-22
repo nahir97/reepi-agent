@@ -21,7 +21,13 @@ import { Composer } from './components/Composer.tsx';
 import { Inspector } from './components/Inspector.tsx';
 import { AppHeader, NavSheet } from './components/MobileBar.tsx';
 import { CardEditorDialog, InsightsDialog } from './components/editors.tsx';
-import { ConfirmDialog, ImportExportDialog, NewStoryDialog, StorySettingsDialog } from './components/modals.tsx';
+import {
+  ConfirmDialog,
+  ImportExportDialog,
+  NewStoryDialog,
+  PromptTemplatesDialog,
+  StorySettingsDialog,
+} from './components/modals.tsx';
 import { CastPage } from './components/CastPage.tsx';
 import { Toasts } from './components/toast.tsx';
 import { CommandPalette } from './components/palette.tsx';
@@ -160,6 +166,7 @@ export function App() {
       {dialog?.kind === 'story-settings' ? <StorySettingsDialog /> : null}
       {dialog?.kind === 'import-export' ? <ImportExportDialog /> : null}
       {dialog?.kind === 'new-story' ? <NewStoryDialog /> : null}
+      {dialog?.kind === 'prompt-templates' ? <PromptTemplatesDialog /> : null}
       {dialog?.kind === 'insights' ? <InsightsDialog /> : null}
       {dialog?.kind === 'card' ? <CardEditorDialog kind={dialog.card} id={dialog.id} /> : null}
       {dialog?.kind === 'confirm' ? (
@@ -222,7 +229,7 @@ function FirstRun() {
         </p>
 
         <div className="mt-7">
-          <div className="eyebrow mb-2">Pick a template</div>
+          <div className="eyebrow mb-2">Pick a starting point</div>
           <div className="grid gap-1.5 sm:grid-cols-2">
             {TEMPLATE_IDS.map((id) => {
               const entry = TEMPLATES[id];

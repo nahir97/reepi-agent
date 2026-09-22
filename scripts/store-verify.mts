@@ -11,13 +11,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const dir = mkdtempSync(join(tmpdir(), 'reepi-store-'));
-const { openDatabase, closeDatabase } = await import('../src/server/db.ts');
+const { openDatabase, closeDatabase, getDb } = await import('../src/server/db.ts');
 const {
   stories, scenes, characters, personas, lore, messages, memories, notes, threads,
-  ledger, prefixes, settings, warmups, loadStoryBundle, resolvePersona,
+  ledger, prefixes, settings, warmups, templates, loadStoryBundle, resolvePersona,
 } = await import('../src/server/store/index.ts');
 const { startChat } = await import('../src/server/chats.ts');
 const { recreateStoryBundle } = await import('../src/server/routes/library/bundle.ts');
+const { expandMacros, macroContextOf, macroCatalogue } = await import('../src/server/macros.ts');
+const { compose } = await import('../src/server/composer.ts');
+const { DEFAULT_CALIBRATION } = await import('../src/shared/tokens.ts');
 
 openDatabase(join(dir, 'split.sqlite'));
 
@@ -131,6 +134,166 @@ check('duplicating a chat yields a standalone story', Boolean(
   branched && branched.story.characterId === null && branched.characters.length === 1 &&
   branched.messages.length === 1,
 ));
+
+// --- prompt templates
+const template = templates.create({
+  name: 'House voice',
+  blurb: 'A preset',
+  blocks: { contract: 'Obey {{user}}.', style: 'plain' },
+});
+check('templates.create/get', templates.get(template.id)?.name === 'House voice');
+check('templates.blocks JSON round-trips', templates.get(template.id)?.blocks.contract === 'Obey {{user}}.');
+check('a stored template is never a built-in', template.builtin === false);
+check(
+  'templates.update replaces only what it was given',
+  templates.update(template.id, { blocks: { genre: 'noir' } })?.blocks.genre === 'noir' &&
+    templates.get(template.id)?.blocks.contract === undefined,
+);
+check('templates.list orders by sort_order', templates.list()[0]?.id === template.id);
+templates.remove(template.id);
+check('templates.remove', templates.get(template.id) === null);
+
+/* A hand-edited database must degrade, not throw: `blocks` is JSON, and a key that
+   is not an editable block would otherwise try to write a column that does not
+   exist the moment someone applied it. */
+getDb()
+  .prepare('INSERT INTO prompt_templates (id, name, blurb, blocks, sort_order, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
+  .run('bad-blocks', 'Bad', '', 'not json', 0, 1, 1);
+check('a corrupt blocks blob degrades to {}', Object.keys(templates.get('bad-blocks')?.blocks ?? {}).length === 0);
+getDb()
+  .prepare('UPDATE prompt_templates SET blocks = ? WHERE id = ?')
+  .run(JSON.stringify({ persona: 'x', contract: 'ok' }), 'bad-blocks');
+check(
+  'a block that is not editable is dropped on read',
+  templates.get('bad-blocks')?.blocks.persona === undefined && templates.get('bad-blocks')?.blocks.contract === 'ok',
+);
+templates.remove('bad-blocks');
+
+// --- macros, resolved for a story
+const macroStory = stories.create({
+  title: 'Macro Hall',
+  contract: 'Obey {{user}}.',
+  genre: 'g',
+  scenario: 'story scenario',
+  bible: 'b',
+  instruct: 'write {{targetWords}} words',
+});
+const primary = characters.create(macroStory.id, {
+  name: 'Asper',
+  description: 'A knife in silk.',
+  personality: 'wry',
+  speech: 'clipped',
+  scenario: 'card role',
+});
+characters.create(macroStory.id, { name: 'Mira', description: 'Second card.' });
+const voice = personas.create(macroStory.id, { name: 'Aleron', description: 'A tired archivist.', isDefault: true });
+stories.update(macroStory.id, { personaId: voice.id, targetWords: 220 });
+const macroScene = scenes.create(macroStory.id, { title: 'Opening', state: [{ key: 'Time', value: 'midnight' }] });
+threads.upsertOpen(macroStory.id, 'the empty throne', macroScene.id);
+
+const macroCtx = macroContextOf(stories.get(macroStory.id)!, macroScene, threads.list(macroStory.id));
+const expand = (text: string) => expandMacros(text, macroCtx).text;
+
+check("{{char}} is the cast's first card", expand('{{char}}') === 'Asper');
+check('{{user}} is the resolved persona name', expand('{{user}}') === 'Aleron');
+check('{{persona}} is the persona description', expand('{{persona}}') === 'A tired archivist.');
+check('{{description}} is the card description', expand('{{description}}') === 'A knife in silk.');
+check('{{personality}} and {{speech}} read the card', expand('{{personality}}/{{speech}}') === 'wry/clipped');
+check(
+  '{{scenario}} is the story block; {{charScenario}} is the card field',
+  expand('{{scenario}}|{{charScenario}}') === 'story scenario|card role',
+);
+check('{{castNames}} joins the cast in order', expand('{{castNames}}') === 'Asper, Mira');
+check('{{state}} renders the scene facts', expand('{{state}}') === 'Time: midnight');
+check('{{threads}} renders the open threads', expand('{{threads}}').includes('the empty throne'));
+check('{{targetWords}} is a bare number', expand('{{targetWords}}') === '220');
+check('macro lookup ignores case and inner spacing', expand('{{ User }}') === 'Aleron');
+check('an unknown macro is left verbatim', expand('{{nope}}') === '{{nope}}');
+check(
+  'expansion is single-pass: a substituted value is not rescanned',
+  expandMacros('{{persona}}', { ...macroCtx, persona: { ...voice, description: '{{char}}' } }).text === '{{char}}',
+);
+check(
+  'an empty value removes the token rather than leaving braces',
+  expandMacros('[{{persona}}|{{user}}]', { ...macroCtx, persona: null }).text === '[|Player]',
+);
+check(
+  'the expansion reports the names it expanded, deduplicated',
+  expandMacros('{{user}} {{user}} {{char}}', macroCtx).macros.join(',') === 'user,char',
+);
+check(
+  'the catalogue resolves every macro for a story',
+  macroCatalogue(macroCtx).find((row) => row.name === 'user')?.value === 'Aleron',
+);
+check(
+  'the catalogue without a story carries names but no values',
+  macroCatalogue(null).every((row) => row.value === null) && macroCatalogue(null).length > 0,
+);
+
+/* A chat borrows its cast and its persona pool, so its macros resolve through the
+   same helpers the payload uses — the greeting written at chat start and the
+   payload built later cannot disagree about who the writer is. */
+const macroChat = stories.create({ title: 'Asper', characterId: primary.id, personaId: voice.id });
+const chatCtx = macroContextOf(macroChat, null, []);
+check("a chat's {{char}} is the borrowed card", expandMacros('{{char}}', chatCtx).text === 'Asper');
+check("a chat's {{castNames}} is that one card", expandMacros('{{castNames}}', chatCtx).text === 'Asper');
+check(
+  "a chat's {{user}} is the borrowed pool's persona",
+  expandMacros('{{user}}', chatCtx).text === 'Aleron',
+);
+check('a chat with no scene resolves {{state}} to nothing', expandMacros('[{{state}}]', chatCtx).text === '[]');
+
+// --- where expansion happens in the payload, and where it must not
+const typed = messages.create({
+  storyId: macroStory.id,
+  sceneId: macroScene.id,
+  role: 'user',
+  variants: ['I say {{char}} out loud'],
+  origin: 'user',
+});
+const composed = compose(
+  {
+    story: stories.get(macroStory.id)!,
+    scene: macroScene,
+    characters: characters.list(macroStory.id),
+    persona: voice,
+    messages: [typed],
+    loreHits: [],
+    recall: [],
+    threads: threads.list(macroStory.id),
+    directorBrief: '',
+    authorNote: 'note {{user}}',
+    impersonateBrief: null,
+    continueMode: false,
+    userTurn: 'and {{user}} again',
+    calibration: DEFAULT_CALIBRATION,
+    includeTools: false,
+    model: 'deepseek-flash',
+    effort: 'none',
+    maxTokens: 900,
+    targetWords: 220,
+    prefill: '{{char}}→',
+  },
+  null,
+);
+const composedBlock = (kind: string) => composed.plan.blocks.find((candidate) => candidate.kind === kind);
+check('a directive block expands its macros', composedBlock('contract')?.preview.includes('Obey Aleron.') === true);
+check('a directive block reports what it expanded', composedBlock('contract')?.macros.join(',') === 'user');
+check('the author note is a block and expands', composedBlock('author-note')?.preview.includes('note Aleron') === true);
+check(
+  'the transcript keeps a macro typed into a message',
+  composedBlock('history')?.preview.includes('{{char}} out loud') === true,
+);
+check('the transcript reports no expansion', (composedBlock('history')?.macros.length ?? 1) === 0);
+check(
+  "the writer's own turn is never rewritten",
+  composed.messages[composed.messages.length - 2]?.content === 'and {{user}} again',
+);
+check('the prefill expands', composed.messages[composed.messages.length - 1]?.content === 'Asper→');
+check(
+  'a macro in a frozen block raises a cache warning',
+  composed.plan.warnings.some((warning) => warning.includes('{{user}}') && warning.includes('frozen prefix')),
+);
 
 // --- cascade delete still works through the split
 stories.remove(story.id);

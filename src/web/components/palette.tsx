@@ -67,7 +67,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       {
         id: 'new-story',
         label: 'New story',
-        hint: 'choose a template',
+        hint: 'choose a starting point',
         group: 'Studio',
         run: () => {
           openDialog({ kind: 'new-story' });
@@ -101,6 +101,16 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         group: 'Studio',
         run: () => {
           openDialog({ kind: 'story-settings' });
+          onClose();
+        },
+      },
+      {
+        id: 'prompt-templates',
+        label: 'Prompt templates',
+        hint: 'reusable system prompts, with macros',
+        group: 'Studio',
+        run: () => {
+          openDialog({ kind: 'prompt-templates' });
           onClose();
         },
       },

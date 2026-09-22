@@ -30,6 +30,7 @@
 
 import { greetingOf } from './cards.ts';
 import { transaction } from './db.ts';
+import { expandMacros, macroContextOf } from './macros.ts';
 import { characters, lore, messages, scenes, stories } from './store/index.ts';
 import type { Character, Story } from '../shared/types.ts';
 
@@ -109,13 +110,22 @@ function openChat(character: Character, source: Story): Story {
 
   const greeting = greetingOf(character);
   if (greeting) {
+    /* The greeting is the one piece of authored text that becomes *transcript*,
+       so its macros are resolved here, once, before it is written. Everywhere
+       else a macro is re-resolved on each payload build; doing that here would
+       mean rewriting a turn that has already been sent, and imported cards are
+       full of `{{char}}`/`{{user}}` in exactly this field.
+
+       The context is the chat's own, so the greeting names the persona the
+       payload will use rather than a second opinion about it. */
+    const rendered = expandMacros(greeting, macroContextOf(chat, scene, [])).text;
     messages.create({
       storyId: chat.id,
       sceneId: scene.id,
       role: 'assistant',
       origin: 'greeting',
       speaker: character.name,
-      variants: [greeting],
+      variants: [rendered],
     });
   }
 

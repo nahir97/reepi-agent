@@ -116,8 +116,8 @@ export function LibraryList({ onPick }: { onPick?: () => void }) {
 
       {stories.length === 0 ? (
         <p className="px-3 py-3 text-[12px] leading-snug text-faint">
-          No stories yet. Start from a template — the contract, genre and style come pre-filled, and those are the blocks
-          you least want to keep editing.
+          No stories yet. Pick a starting point — the contract, genre and style come pre-filled, and those are the
+          blocks you least want to keep editing.
         </p>
       ) : shown === 0 ? (
         <p className="px-3 py-3 text-[12px] leading-snug text-faint">No story matches “{query.trim()}”.</p>
@@ -252,8 +252,9 @@ type NewStoryPanelProps = {
 };
 
 /**
- * The inline template chooser. Blurbs come from the server's own `TEMPLATES`, so
- * the thing described is exactly the prefix the composer will build.
+ * The inline starting-point chooser — the rail's version of the New-story dialog.
+ * Blurbs come from the server's own `TEMPLATES`, so the thing described is exactly
+ * the prefix the composer will build.
  */
 function NewStoryPanel({ title, template, onTitle, onTemplate, onSubmit, onCancel }: NewStoryPanelProps) {
   const ids = Object.keys(TEMPLATES) as StoryTemplateId[];
@@ -275,12 +276,12 @@ function NewStoryPanel({ title, template, onTitle, onTemplate, onSubmit, onCance
         className="field field-sm"
         value={title}
         autoFocus
-        placeholder="blank uses the template's own"
+        placeholder="blank uses the starting point's own"
         onChange={(event) => onTitle(event.target.value)}
       />
 
       <fieldset className="mt-2.5">
-        <legend className="label">Template</legend>
+        <legend className="label">Starting point</legend>
         <div className="space-y-1">
           {ids.map((id) => {
             const entry = TEMPLATES[id];

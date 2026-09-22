@@ -77,6 +77,16 @@ export const IconScroll = (props: IconProps) => (
   </Glyph>
 );
 
+/** A page with braces on it: reusable prompt text, not a document. */
+export const IconTemplate = (props: IconProps) => (
+  <Glyph {...props}>
+    <path d="M9.6 2.5H4.6a1.6 1.6 0 0 0-1.6 1.6v7.8a1.6 1.6 0 0 0 1.6 1.6h6.8a1.6 1.6 0 0 0 1.6-1.6V5.6z" />
+    <path d="M9.6 2.5v3.1h3.4" />
+    <path d="M6.3 8.5c-.7 0-1.1.4-1.1 1.1v.5c0 .4-.2.6-.6.6.4 0 .6.2.6.6v.5c0 .7.4 1.1 1.1 1.1" />
+    <path d="M9.7 8.5c.7 0 1.1.4 1.1 1.1v.5c0 .4.2.6.6.6-.4 0-.6.2-.6.6v.5c0 .7-.4 1.1-1.1 1.1" />
+  </Glyph>
+);
+
 export const IconBrain = (props: IconProps) => (
   <Glyph {...props}>
     <path d="M6.5 2.6a2 2 0 0 0-2 2 1.9 1.9 0 0 0-1.2 3.2A2 2 0 0 0 4 11.4a2 2 0 0 0 2.5 2z" />

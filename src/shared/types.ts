@@ -1,7 +1,10 @@
 /**
- * Domain types shared by server and web. Pure type declarations plus a few
- * frozen data tables — no runtime behaviour worth testing lives here.
+ * Domain types shared by server and web. Pure type declarations plus a few frozen
+ * data tables and the tiny mappers that read them — no I/O, no state, nothing that
+ * needs a store or a network to exercise.
  */
+
+import type { MacroName } from './macros.ts';
 
 export type Role = 'system' | 'user' | 'assistant';
 
@@ -106,6 +109,82 @@ export const BLOCK_ORDER = [
 ] as const;
 
 export type BlockKind = (typeof BLOCK_ORDER)[number];
+
+/**
+ * The blocks a writer can author as free text, in payload order — a strict subset
+ * of `BLOCK_ORDER`, since every other block is rendered from rows (cast, persona,
+ * transcript) or written by an agent.
+ *
+ * This is the definition the story-settings editor builds its fields from, the
+ * list a prompt template may fill, and the target a template is filed under. One
+ * table, so a block cannot be editable in one place and missing in another.
+ */
+export const EDITABLE_BLOCKS = [
+  'contract',
+  'genre',
+  'style',
+  'story',
+  'scenario',
+  'exemplars',
+  'instruct',
+] as const;
+
+export type EditableBlock = (typeof EDITABLE_BLOCKS)[number];
+
+/** The `Story` column each editable block's text lives in. */
+export type EditableBlockField =
+  | 'contract'
+  | 'genre'
+  | 'style'
+  | 'bible'
+  | 'scenario'
+  | 'exemplars'
+  | 'instruct';
+
+export const EDITABLE_BLOCK_FIELD: Record<EditableBlock, EditableBlockField> = {
+  contract: 'contract',
+  genre: 'genre',
+  style: 'style',
+  story: 'bible',
+  scenario: 'scenario',
+  exemplars: 'exemplars',
+  instruct: 'instruct',
+};
+
+/** Narrowing helper: is this untrusted string one of the editable blocks? */
+export function isEditableBlock(value: unknown): value is EditableBlock {
+  return typeof value === 'string' && (EDITABLE_BLOCKS as readonly string[]).includes(value);
+}
+
+/**
+ * The story fields a set of block texts would overwrite.
+ *
+ * Both apply paths go through this: the story editor layers it onto its unsaved
+ * draft, and the template library saves it immediately through the ordinary story
+ * PATCH — so "apply" has one meaning and one write path. `only` narrows to
+ * specific blocks, which is how the editor applies just the block being edited;
+ * empty text is skipped, because a template that fills three blocks must leave a
+ * fourth alone.
+ */
+export function filledBlocks(template: PromptTemplate): EditableBlock[] {
+  return (Object.keys(template.blocks) as EditableBlock[]).filter((block) => {
+    const text = template.blocks[block];
+    return typeof text === 'string' && text.trim().length > 0;
+  });
+}
+
+export function templateStoryPatch(
+  blocks: Partial<Record<EditableBlock, string>>,
+  only?: readonly EditableBlock[],
+): Partial<Record<EditableBlockField, string>> {
+  const patch: Partial<Record<EditableBlockField, string>> = {};
+  for (const block of only ?? EDITABLE_BLOCKS) {
+    const text = blocks[block];
+    if (text === undefined || !text.trim()) continue;
+    patch[EDITABLE_BLOCK_FIELD[block]] = text;
+  }
+  return patch;
+}
 
 export const BLOCK_RANK: Record<BlockKind, number> = Object.fromEntries(
   BLOCK_ORDER.map((kind, index) => [kind, index]),
@@ -242,6 +321,31 @@ export type Persona = {
   avatar: string | null;
   tokens: number;
   isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
+/**
+ * A named set of block texts the writer can apply in one action.
+ *
+ * Usually one entry — a snippet for the contract, say — but nothing stops a
+ * "house voice" preset from filling the contract, the genre and the style
+ * together. Applying copies the text into the story; the macros in it stay
+ * unresolved, so the preset keeps resolving against whatever the story becomes.
+ *
+ * Templates are app-scoped rather than story-scoped so the same preset works
+ * everywhere, and the code-shipped ones are not rows at all — they are constants
+ * merged into the list, which is what lets a release fix one without a migration
+ * and what makes "editable" mean "duplicate it first".
+ */
+export type PromptTemplate = {
+  id: string;
+  name: string;
+  blurb: string;
+  /** At least one non-empty entry, by the route's validation. */
+  blocks: Partial<Record<EditableBlock, string>>;
+  builtin: boolean;
+  sortOrder: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -480,6 +584,13 @@ export type PromptBlockPreview = {
   changed: boolean;
   /** Tokens that survive from the previous turn up to and including this block. */
   stablePrefixTokens: number;
+  /**
+   * Macros this block expanded, in first-appearance order. Empty on the
+   * transcript, which is a record rather than a template — and worth showing,
+   * because a macro in a frozen block re-prices everything behind it whenever its
+   * value changes.
+   */
+  macros: MacroName[];
   preview: string;
 };
 

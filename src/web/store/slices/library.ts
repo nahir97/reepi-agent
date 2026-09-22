@@ -40,6 +40,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
         get().fail(error, 'Cannot reach the Reepi server');
       }
       set({ booted: true });
+      void get().loadTemplates();
       void get().loadStoryStats();
       void get().refreshAccount();
       void get().refreshInsights();
@@ -118,6 +119,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
         if (bundle.story.theme !== get().theme) get().setTheme(bundle.story.theme);
         set({ ui: { ...get().ui, drawer: null } });
         void get().refreshInsights();
+        void get().loadMacros();
         void get().refreshPlan({ storyId, sceneId: firstScene?.id ?? '', mode: 'continue' });
       } catch (error) {
         set({ loadingBundle: false });
@@ -208,6 +210,9 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
         const bundle = get().bundle;
         if (bundle) set({ bundle: { ...bundle, story } });
         set({ stories: get().stories.map((item) => (item.id === story.id ? story : item)) });
+        /* A block edit can change what a macro reads — `{{bible}}` most obviously —
+           so the reference the editor shows is refreshed with the save. */
+        void get().loadMacros();
         void get().refreshPlan({ storyId, sceneId: get().activeScene()?.id ?? '', mode: 'continue' });
       } catch (error) {
         get().fail(error, 'Could not save the story');

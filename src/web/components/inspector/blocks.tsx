@@ -117,6 +117,16 @@ export function BlocksTab() {
                     <span className="min-w-0 flex-1 truncate text-[12px] font-medium">
                       {block.label || BLOCK_LABELS[block.kind]}
                     </span>
+                    {block.macros.length > 0 ? (
+                      <span
+                        className="chip shrink-0"
+                        style={{ color: 'var(--accent)', borderColor: 'var(--border)' }}
+                        title={`Resolved from the story every turn: ${block.macros.map((name) => `{{${name}}}`).join(', ')}`}
+                      >
+                        {block.macros.slice(0, 2).map((name) => `{{${name}}}`).join(' ')}
+                        {block.macros.length > 2 ? ` +${block.macros.length - 2}` : ''}
+                      </span>
+                    ) : null}
                     {block.changed ? (
                       <span className="chip chip-miss" title="Hash moved since the previous turn — this and everything after it re-pays at the miss price">
                         changed

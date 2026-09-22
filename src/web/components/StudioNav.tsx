@@ -13,7 +13,7 @@
 
 import type { ReactElement } from 'react';
 import { useStore } from '../store.ts';
-import { IconChart, IconCopy, IconDownload, IconSettings, IconUsers } from './icons.tsx';
+import { IconChart, IconCopy, IconDownload, IconSettings, IconTemplate, IconUsers } from './icons.tsx';
 
 type StudioEntry = {
   label: string;
@@ -39,6 +39,10 @@ export function StudioNav({ onNavigate, compact = false }: { onNavigate?: () => 
        launcher for navigation rather than the destination it named. */
     { label: 'Cost & cache', hint: 'spend, hit rate, what the prefix costs', icon: IconChart, run: () => openDialog({ kind: 'insights' }) },
     { label: 'Story settings', hint: 'model, voice contract, budgets', icon: IconSettings, run: () => openDialog({ kind: 'story-settings' }) },
+    /* Templates sit beside Story settings because they are the same material at a
+       different distance: one is the blocks of *this* story, the other the text the
+       writer reuses across stories. */
+    { label: 'Prompt templates', hint: 'reusable system prompts, with macros', icon: IconTemplate, run: () => openDialog({ kind: 'prompt-templates' }) },
     { label: 'Import & export', hint: 'cards, bundles, markdown', icon: IconDownload, run: () => openDialog({ kind: 'import-export' }) },
   ];
 

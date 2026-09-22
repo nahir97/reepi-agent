@@ -19,9 +19,30 @@ import { IconClose } from '../icons.tsx';
 
 /* ------------------------------------------------------------- focus trap */
 
-/** Traps focus inside the dialog and closes on Escape. */
-export function useDialogA11y<T extends HTMLElement>(open: boolean, onClose: () => void) {
+/**
+ * Traps focus inside the dialog and closes on Escape.
+ *
+ * The effect is keyed on `open` and the initial-focus selector — never on the
+ * `onClose` callback, and that is load-bearing rather than tidy. Callers pass a
+ * fresh `onClose` arrow on every render, so depending on it tore the trap down and
+ * rebuilt it on *every keystroke*: the cleanup restored focus to whatever had been
+ * focused when the last run started, and the setup then focused the dialog's first
+ * control. One character typed into a field therefore moved focus to the header's
+ * close button — on a phone that dismisses the on-screen keyboard mid-word, and the
+ * next keypress would have activated the button. The latest callback is read from a
+ * ref instead, and the first control is focused once, when the dialog opens.
+ */
+export function useDialogA11y<T extends HTMLElement>(
+  open: boolean,
+  onClose: () => void,
+  /** Selector for the control that should take focus when the dialog opens. */
+  initialFocus?: string,
+) {
   const ref = useRef<T | null>(null);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -36,16 +57,23 @@ export function useDialogA11y<T extends HTMLElement>(open: boolean, onClose: () 
           ).filter((element) => element.offsetParent !== null)
         : [];
 
-    const first = focusable()[0];
+    /* `initialFocus` is explicit rather than inferred from `autoFocus`, because a
+       React autofocus is applied during commit and would otherwise be overridden
+       one tick later by the line below — which is how the close button came to be
+       the focused control in every dialog, the new-story title field included. */
+    const preferred = initialFocus && node ? node.querySelector<HTMLElement>(initialFocus) : null;
+    const first = preferred ?? focusable()[0];
     if (first) first.focus();
     else node?.focus();
 
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onClose();
+        close.current();
         return;
       }
+      /* Queried per keypress, so the cycle picks up controls that appear or
+         disappear while the dialog is open. */
       if (event.key !== 'Tab') return;
       const items = focusable();
       const head = items[0];
@@ -65,7 +93,7 @@ export function useDialogA11y<T extends HTMLElement>(open: boolean, onClose: () 
       document.removeEventListener('keydown', onKey, true);
       previous?.focus();
     };
-  }, [open, onClose]);
+  }, [open, initialFocus]);
 
   return ref;
 }
@@ -79,6 +107,7 @@ export function Shell({
   children,
   footer,
   wide = false,
+  initialFocus,
 }: {
   title: string;
   subtitle?: string;
@@ -86,8 +115,10 @@ export function Shell({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Selector for the control to focus on open. Defaults to the first one. */
+  initialFocus?: string;
 }) {
-  const ref = useDialogA11y<HTMLDivElement>(true, onClose);
+  const ref = useDialogA11y<HTMLDivElement>(true, onClose, initialFocus);
   return (
     <div
       className="fixed inset-0 z-[80] flex items-end justify-center p-0 sm:items-center sm:p-4"

@@ -218,6 +218,26 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+/*
+ * Reusable prompt text. The blocks column is a JSON map of editable block name to
+ * text — a template usually fills one block but may fill several. It is
+ * app-scoped rather than story-scoped precisely so the same preset can be applied
+ * anywhere, which is also why applying it copies the text instead of pointing at
+ * the row.
+ *
+ * A new table needs no migration entry: the DDL below runs against an existing
+ * file on every boot, and simply creates what is missing.
+ */
+CREATE TABLE IF NOT EXISTS prompt_templates (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  blurb      TEXT NOT NULL DEFAULT '',
+  blocks     TEXT NOT NULL DEFAULT '{}',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS warmups (
   story_id     TEXT PRIMARY KEY,
   fingerprint  TEXT NOT NULL,

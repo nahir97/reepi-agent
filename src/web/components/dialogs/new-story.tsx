@@ -33,7 +33,8 @@ export function NewStoryDialog() {
   return (
     <Shell
       title="New story"
-      subtitle="Every template pre-fills the frozen blocks — those are the ones you want to stop editing early."
+      initialFocus="#ns-title"
+      subtitle="Every starting point pre-fills the frozen blocks — those are the ones you want to stop editing early."
       onClose={() => openDialog(null)}
       footer={
         <>
@@ -52,14 +53,13 @@ export function NewStoryDialog() {
       <input
         id="ns-title"
         className="field"
-        autoFocus
         value={title}
-        placeholder="Leave blank to use the template's own title"
+        placeholder="Leave blank to use the starting point's own title"
         onChange={(event) => setTitle(event.target.value)}
       />
 
       <fieldset className="mt-3.5">
-        <legend className="label">Template</legend>
+        <legend className="label">Starting point</legend>
         <div className="grid gap-1.5 sm:grid-cols-2">
           {ids.map((id) => {
             const entry = TEMPLATES[id];

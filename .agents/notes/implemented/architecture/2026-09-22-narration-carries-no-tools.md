@@ -47,6 +47,17 @@ The shape has three load-bearing properties:
 paying for thinking tokens but because **thinking mode silently ignores `temperature`**, which
 is fatal for creative writing.
 
+**The templating boundary stops at the story's own blocks.** Since
+[prompt templates and macros](../feature/2026-09-22-prompt-templates-and-macros.md), a writer can
+author and reuse the text of the seven blocks they own (`contract`, `genre`, `style`, `story`,
+`scenario`, `exemplars`, `instruct`). Nothing here becomes editable with them: `DIRECTOR_TOOLS`,
+the system prompt of every pass in `src/server/agents/`, and the narration request's `tools`
+handling stay in code. A prompt whose whole job is to emit a valid tool call is a structured
+output contract, not prose — a Director that can be talked out of `set_scene_state` corrupts the
+ledger rather than customising an assistant — and those passes are side-channel calls whose spend
+is accounted under their own kind. A template may change *what the narrator is told*; it may not
+change *what the machinery does*.
+
 ## Verification
 
 `npm run verify:cache` shows the narration payload holding 85–88% cache hits across turns —

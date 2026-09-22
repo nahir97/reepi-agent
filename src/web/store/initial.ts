@@ -62,6 +62,11 @@ export function initialState(): Omit<
   | 'duplicateStory'
   | 'archiveStory'
   | 'updateStory'
+  | 'loadTemplates'
+  | 'saveTemplate'
+  | 'removeTemplate'
+  | 'loadMacros'
+  | 'applyTemplate'
   | 'createScene'
   | 'switchScene'
   | 'updateScene'
@@ -101,6 +106,8 @@ export function initialState(): Omit<
   | 'activeScene'
 > {
   return {
+    promptTemplates: [],
+    macros: [],
     stories: [],
     storyStats: {},
     activeStoryId: null,

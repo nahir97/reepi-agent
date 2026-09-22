@@ -219,6 +219,16 @@ click away and none of it is on the default screen.
   card's greeting. Who you are is a chip beside the composer, switchable mid-chat; switching
   re-prices the payload from the persona block on, which is the one cache cost the interface
   states before you take it. The pencil in the card's footer is still the editor.
+- **Prompt templates and macros.** The blocks you author — voice contract, genre, style, bible,
+  scenario, exemplars, instruction — can be saved as named templates and applied to any story in
+  one action, singly or several at once. Every block accepts `{{macros}}` (`{{char}}`, `{{user}}`,
+  `{{description}}`, `{{persona}}`, `{{scenario}}`, `{{state}}`, `{{targetWords}}` and thirteen
+  more) which resolve against the story **on every turn**, never baked in: a template that says
+  `{{user}}` stays correct when the persona changes. The library lives in a studio row and the
+  command palette, with a reference panel that shows each macro's live value for the open story.
+  Five starters ship read-only; duplicating one gives you an editable copy. The agentic passes and
+  their tool schemas are deliberately *not* templatable — this is the writer's system prompt, not
+  the machinery.
 - **Attribution.** Any turn can be reassigned to a character, so an ensemble scene
   reads as a conversation between named speakers rather than a wall of "Narrator".
 - **One cost pill** in the composer — live predicted hit rate, the price of the
@@ -338,6 +348,9 @@ POST /api/stories/:id/archivist → ArchivistResult
 POST /api/stories/:id/summarise → SummaryResult
 POST /api/stories/:id/conductor → ConductorResult      N drafts, one judge
 POST /api/characters/:id/chat   → Story                open or start their 1:1 chat
+GET  /api/templates             → PromptTemplate[]     built-ins first, then yours
+POST /api/templates             → PromptTemplate
+GET  /api/macros?storyId=       → MacroInfo[]          each macro's live value
 GET  /api/stories/:id/insights  → Insights
 GET  /api/diagnose              → DiagnoseReport       live cache verification
 GET  /api/stories/:id/export?format=json|chara|markdown
@@ -345,7 +358,8 @@ POST /api/import                → Story
 ```
 
 Plus full CRUD for stories, scenes, characters, personas, lore, memories, threads,
-notes, and messages. See `src/shared/api.ts` for the frozen contract.
+notes, messages and prompt templates (built-ins answer `409`, never a silent no-op).
+See `src/shared/api.ts` for the frozen contract.
 
 ---
 
@@ -357,7 +371,9 @@ behind a re-exporting barrel — so a split never forces an edit at the call sit
 ```
 src/
   shared/          pure types, cost model, token estimator, text helpers, API contract
-    types.ts         domain types + the block order, volatility table, kind lists
+    types.ts         domain types + the block order, volatility table, kind lists,
+                     the editable-block table, the block-to-field mapper
+    macros.ts        the macro registry: names, labels, groups, hints, the token pattern
     cost.ts          pricing, peak/off-peak, the 50x cache multiplier
     tokens.ts        estimator + self-calibrating EWMA correction
     text.ts          browser-safe string helpers (no node: imports)
@@ -365,7 +381,10 @@ src/
     db.ts            schema, additive migrations, transaction()
     store/           13 DAO modules behind index.ts — mapper lives beside its DAO
     deepseek.ts      SSE client, usage/cache accounting, retries
-    composer.ts      the block-ordered, cache-stable payload builder
+    composer.ts      the block-ordered, cache-stable payload builder; expands macros
+    macros.ts        what each macro means for a story, and the reference read model
+    render.ts        cast / scene-state / thread renderers, shared by composer and macros
+    templates.ts     the code-shipped starter templates (merged in, never seeded)
     chats.ts         starting a character chat: the world it copies, the card it borrows
     lorebook.ts      keyword scan, budget packing, BM25 + term extraction
     orchestrator.ts  turn engine, trim hysteresis, calibration, ledger
@@ -373,6 +392,7 @@ src/
     routes/
       library/       shared validation, sanitise, bundle recreation, routes
       chat.ts        plan (dry run) + chat (streamed SSE)
+      templates.ts   prompt-template CRUD + the macro reference
       agentic.ts     director, archivist, summarise, conductor, judge, warm
       memory.ts      memories, recall
       portability.ts export/import: JSON, markdown, chara v2 PNG
@@ -384,7 +404,7 @@ src/
       types.ts       the Store interface and the store's vocabulary
       runtime.ts     shared mutable state: streamSeq, planTimer, activeController
       stream.ts      the StreamEvent reducer
-      slices/        library, turns, messages, instruments, portability, getters
+      slices/        library, turns, messages, instruments, portability, templates, getters
     speakers.ts      resolves a turn's speaker and portrait against the cast
     theme.ts         theme labels and swatch gradients, one definition
     api.ts           typed client + SSE frame reader
@@ -399,12 +419,14 @@ src/
       MessageActions.tsx swipe/regenerate/edit/pin/exclude/branch/attribute
       Composer.tsx       writing surface, the compact cost pill, and who you are writing as
       PersonaSwitch.tsx  the composer's persona chip: who the model reads as you, switchable
+      MacroPicker.tsx    the macro reference (live values) and the insert-a-token control
       CacheMeter.tsx     the pill, and the full payload meter behind it
       Inspector.tsx      rail chrome: the band, the menu, the open section
       panel.tsx          SectionTitle / Card / Metric, shared by every panel
       editors.tsx        cost ledger + full character/persona editors
       MobileBar.tsx      app header and the navigation sheet
       modals.tsx         barrel over dialogs/
+      dialogs/           one module per dialog: story settings, prompt templates, transfer…
 ```
 
 Files are split when they have more than one reason to change — not to hit a line
@@ -424,6 +446,12 @@ that were over 1100 lines each held unrelated jobs and were split.
 - **Cache hits are best-effort on DeepSeek's side.** Near-90% is what this
   architecture achieves, not 100% — a very long-running server can see cache
   units expire mid-session.
+- **A macro inside a frozen block is a cache decision.** Text that reads a live
+  value sits at the front of the payload, so changing that value (a persona switch, an
+  edited card) re-prices everything behind it. The composer names the macro and the
+  block in its warnings, and Story settings says so before you apply a template.
+- **Prompt templates are app-scoped, not part of a story export.** A JSON bundle
+  carries the story, never the library; a fresh database starts with the built-ins.
 - Chat prefix completion uses DeepSeek's `/beta` base URL and is marked beta
   upstream.
 - Costs shown are estimates derived from the published rate card; the

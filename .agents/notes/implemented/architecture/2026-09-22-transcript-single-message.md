@@ -40,6 +40,16 @@ tail, and the instruction. A 27-turn scene reduces to a 5-message payload.
   composer reports `payload.plan.blocks[].changed` per block rather than per message.
 - Per-message role wrappers are gone. `Message.role` is still stored and still drives
   rendering, but it no longer appears in the wire payload as a separate message.
+- **This block is never re-rendered from live state, macros included.** Every other block
+  expands its `{{macro}}` tokens at compose time against the current story (see
+  [prompt templates and macros](../feature/2026-09-22-prompt-templates-and-macros.md)); the
+  transcript does not, and neither does the writer's just-typed turn, so a `{{char}}` typed into
+  a message stays literal forever. The reason is the append-only property above: resolving
+  macros here would rewrite bytes that have already been sent whenever a persona or a card
+  changed, and expanding a fresh turn but not its stored form would put the tail of this block
+  out of sync with what the model was actually sent — a miss on every turn rather than a
+  feature. A chat's *greeting* is expanded once, when it is written, because it enters the
+  transcript from authoring rather than from the conversation.
 
 ## Verification
 
