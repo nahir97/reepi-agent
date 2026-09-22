@@ -1,0 +1,91 @@
+# Agent Note: Narration carries no tools
+
+Status: implemented
+
+## Problem
+
+Reepi has real agentic capability — a Director that plans beats, an Archivist that distils
+durable facts, a Summariser, a Conductor that drafts variants. The obvious implementation is
+one request with tool definitions attached, letting the model call them mid-turn. That is how
+most agentic chat applications work, and it is how the first version worked.
+
+It was also the single most expensive mistake in the codebase, for reasons that only show up
+when you read the wire protocol carefully.
+
+**A request carrying `tools` forces DeepSeek to require the full `reasoning_content` echoed
+back on every subsequent turn.** The reasoning trace is billed as *input* on the way back,
+and it is not cacheable in the way the rest of the prefix is — it grows monotonically with
+conversation length. A long roleplay session with tools enabled therefore pays for every
+token of every reasoning trace it has ever produced, on every turn, forever.
+
+There was a second, subtler cost. Tool calls and their results are appended *mid-transcript*,
+so the history block is no longer append-only at its tail. Every tool result rewrites the end
+of the one block the cache depends on.
+
+## Decision
+
+**The narration request carries no tools. Every agent runs as a separate, side-channel API
+call.**
+
+`composer.ts` never emits a `tools` array. The agentic passes in `src/server/agents/` each
+build their own small context, make their own call, and write their result to the database —
+where it becomes an ordinary block (`director`, `retrieval`, `state`) or a note the writer can
+accept. Nothing an agent produces is spliced into the narration transcript.
+
+The shape has three load-bearing properties:
+
+- **The narration prefix stays pristine.** No tool definitions, no tool results, no reasoning
+  traces echoed back. The payload the cache depends on is never touched by an agent.
+- **Each agent pays once.** A Director call reads the recent transcript and writes a brief;
+  the next narration turn reads that brief as a small text block. The agent's own cost is
+  recorded to the ledger under its own `CostEventKind` and never recurs.
+- **Agents still share the cache.** Because they read the same frozen prefix, a Director call
+  right after a turn hits the same cache the turn did — which is why the Conductor can produce
+  three drafts for barely more than the cost of one.
+
+`ReasoningEffort` is likewise unrelated: narration sets `effort: 'none'` not only to avoid
+paying for thinking tokens but because **thinking mode silently ignores `temperature`**, which
+is fatal for creative writing.
+
+## Verification
+
+`npm run verify:cache` shows the narration payload holding 85–88% cache hits across turns —
+which is only achievable if nothing mid-conversation invalidates the prefix.
+
+The `/api/diagnose` endpoint repeats a ~4k-token payload and reports the measured hit rate,
+so the assumption is checked against the API's own accounting rather than asserted.
+
+Each pass records to the cost ledger under its own kind (`director`, `archivist`,
+`summarise`, `conductor`, `judge`), visible in the Cost & cache panel.
+
+## Alternatives considered
+
+**Keep tools on the narration request and accept the reasoning-echo cost.** Rejected: the
+cost is unbounded in conversation length, which is precisely the case roleplay is. A long
+session would be dominated by re-paid reasoning tokens.
+
+**Tools on narration, but clear the reasoning traces manually.** Rejected because the API
+requires them echoed once tools are declared; dropping them produces a protocol error rather
+than a saving.
+
+**One agent with all tools, invoked between turns.** Rejected as a worse version of the same
+problem: a single large call replacing four small ones loses the shared-prefix benefit, since
+each pass reads a different slice of state and would pay its own miss on the parts the others
+do not need.
+
+**Let agents append into the transcript as system messages.** Rejected: it rewrites the tail
+of the history block, which is the one block the cache depends on. Agent output is durable
+state, not transcript, and belongs in its own block.
+
+## Consequences
+
+- **Extra round-trips.** Agentic work is N calls rather than one. This is affordable exactly
+  because each hits the shared cache, and it is opt-in: nothing runs on the narration path.
+- **No mid-turn tool use.** The model cannot decide to call a tool while writing prose. In
+  practice this is a feature for creative writing — the narration stays a single coherent
+  generation rather than being interrupted by machinery.
+- **Agent output is stale by construction.** A Director brief describes the transcript as of
+  when it ran, and the composer labels it as its own block so a stale brief is visible rather
+  than silently mixed into history.
+- This is the constraint most likely to be violated by a well-meaning contributor adding
+  "tool support to the chat route". It is recorded here for that reason.

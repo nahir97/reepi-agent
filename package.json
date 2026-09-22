@@ -1,0 +1,43 @@
+{
+  "name": "reepi",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reepi \u2014 a cache-obsessed chat studio for roleplay and creative writing, built on DeepSeek.",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env src/server/index.ts",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "node --env-file-if-exists=.env src/server/index.ts",
+    "serve": "npm run build && NODE_ENV=production node --env-file-if-exists=.env src/server/index.ts",
+    "verify:cache": "node --env-file-if-exists=.env scripts/cache-verify.ts",
+    "verify:store": "node scripts/store-verify.mts",
+    "verify:tx": "node scripts/tx-verify.mts",
+    "typecheck": "tsc --noEmit",
+    "verify:notes": "node scripts/verify-notes.mts"
+  },
+  "dependencies": {
+    "@fontsource-variable/fraunces": "^5.1.1",
+    "@fontsource-variable/inter": "^5.1.1",
+    "@fontsource-variable/jetbrains-mono": "^5.1.1",
+    "@fontsource-variable/literata": "^5.1.1",
+    "@hono/node-server": "^1.13.8",
+    "hono": "^4.6.16",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.4",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  }
+}

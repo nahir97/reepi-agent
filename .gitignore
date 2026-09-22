@@ -1,0 +1,87 @@
+# Reepi — ignored artifacts.
+#
+# Rule of thumb for this repository: ignore anything generated, anything holding a
+# credential, and anything that is a *result* of running the app. Everything else is
+# source. In particular `.agents/` (the notes corpus and skills) and `scripts/` are
+# tracked — they are the reasoning and the verification, not byproducts.
+
+# ---------------------------------------------------------------- dependencies
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+jspm_packages/
+
+# ---------------------------------------------------------------- credentials
+# The real key lives here. `.env.example` is committed as the template; anything
+# else matching `.env*` is assumed to hold a secret until proven otherwise.
+.env
+.env.*
+!.env.example
+
+# ------------------------------------------------------------------ build output
+# `vite build` writes here; the server serves it in production but it is never edited.
+dist/
+build/
+out/
+*.tsbuildinfo
+.vite/
+.vite-cache/
+
+# ------------------------------------------------------------- runtime / data
+# The SQLite database, its write-ahead log, and its shared-memory file. All three
+# are recreated on boot, and the app creates the directory itself (see the
+# `mkdirSync` in `src/server/db.ts`) — so an empty `data/` is not a build step.
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.db
+*.db3
+
+# Export artifacts a writer may produce while testing import/export.
+*.reepi.json
+*.card.png
+
+# ----------------------------------------------------------------------- logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+
+# ------------------------------------------------------------------- OS / editor
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~
+.\#*
+\#*\#
+
+# ------------------------------------------------------------------ test output
+coverage/
+.nyc_output/
+*.lcov
+
+# ------------------------------------------------------------------ temp files
+# Ad-hoc verification scripts are written to /tmp, but a stray one in the tree is
+# almost always scratch work rather than a keeper.
+*.tmp
+.tmp/
+scratch/
+tmp/

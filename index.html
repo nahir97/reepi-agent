@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-theme="ink" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#14100e" />
+    <meta
+      name="description"
+      content="Reepi — a cache-obsessed studio for roleplay and creative writing, built on DeepSeek."
+    />
+    <title>Reepi — Roleplay Studio</title>
+    <script>
+      // Apply the persisted theme before first paint to avoid a flash.
+      try {
+        var t = localStorage.getItem('reepi.theme');
+        if (t) document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
+  </head>
+  <body class="h-full">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/web/main.tsx"></script>
+  </body>
+</html>

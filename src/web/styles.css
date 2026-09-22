@@ -1,0 +1,958 @@
+/* ==========================================================================
+   Reepi — design system.
+
+   Tailwind v4, CSS-first. Everything semantic lives in custom properties that
+   swap per `html[data-theme]`; Tailwind sees them through `@theme inline` so
+   `bg-panel`, `text-dim`, `border-border`, `shadow-1` all resolve to the live
+   token rather than a copy baked at build time.
+   ========================================================================== */
+
+@import '@fontsource-variable/fraunces/standard.css';
+@import '@fontsource-variable/literata/standard.css';
+@import '@fontsource-variable/inter/standard.css';
+@import '@fontsource-variable/jetbrains-mono/index.css';
+@import 'tailwindcss';
+
+/* ------------------------------------------------------------------ theme */
+
+@theme {
+  /* Typefaces. Fraunces carries the literary display voice, Literata does the
+     long-form reading, Inter handles chrome, JetBrains Mono carries metrics. */
+  --font-display: 'Fraunces Variable', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-serif: 'Literata Variable', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Radii — hairline, paper-like. Nothing pillowy. */
+  --radius-hair: 2px;
+  --radius-sm: 5px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
+  --radius-xl: 18px;
+
+  /* Reading measure and rhythm, used by the prose renderer. */
+  --measure: 68ch;
+
+  /* Motion. */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* `inline` keeps the var() reference live, so a theme switch is a single
+   attribute flip with no rebuilt CSS. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-sunken: var(--bg-sunken);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-dim: var(--text-dim);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-narrator: var(--narrator);
+  --color-player: var(--player);
+  --color-dialogue: var(--dialogue);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-cache-hit: var(--cache-hit);
+  --color-cache-miss: var(--cache-miss);
+  --color-rule: var(--rule);
+
+  --shadow-1: var(--elev-1);
+  --shadow-2: var(--elev-2);
+  --shadow-3: var(--elev-3);
+}
+
+/* --------------------------------------------------------------- themes */
+
+/* ink — warm near-black paper with a parchment accent. The default. */
+:root,
+html[data-theme='ink'] {
+  color-scheme: dark;
+  --bg: #14100e;
+  --bg-sunken: #0e0b09;
+  --panel: #1a1513;
+  --panel-raised: #241d19;
+  --border: #322a25;
+  --border-strong: #4a3d35;
+  --rule: #2a221e;
+  --text: #f1e9e1;
+  --text-dim: #b5a69a;
+  --text-faint: #8d7f75;
+  --accent: #d9a44c;
+  --accent-soft: rgba(217, 164, 76, 0.13);
+  --accent-ink: #1b1206;
+  --narrator: #ece2d7;
+  --player: #e0b57e;
+  --dialogue: #f4d9a8;
+  --ok: #63bd8c;
+  --warn: #ddab55;
+  --danger: #e2755f;
+  --cache-hit: #57bd8d;
+  --cache-miss: #e2735c;
+  --glow: rgba(217, 164, 76, 0.07);
+  --grain: 0.035;
+  --grain-blend: soft-light;
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --elev-2: 0 6px 20px -8px rgba(0, 0, 0, 0.7);
+  --elev-3: 0 24px 60px -20px rgba(0, 0, 0, 0.85);
+}
+
+/* ember — deep oxblood and amber. */
+html[data-theme='ember'] {
+  color-scheme: dark;
+  --bg: #1a100c;
+  --bg-sunken: #120a07;
+  --panel: #22140f;
+  --panel-raised: #2e1b13;
+  --border: #41261b;
+  --border-strong: #61382a;
+  --rule: #362017;
+  --text: #f6e7dc;
+  --text-dim: #c1a595;
+  --text-faint: #9c8071;
+  --accent: #e2893c;
+  --accent-soft: rgba(226, 137, 60, 0.14);
+  --accent-ink: #1e0f04;
+  --narrator: #f2e0d3;
+  --player: #e8a266;
+  --dialogue: #ffd9a3;
+  --ok: #6cba86;
+  --warn: #e0a447;
+  --danger: #e4654f;
+  --cache-hit: #62b583;
+  --cache-miss: #e4634b;
+  --glow: rgba(226, 137, 60, 0.09);
+  --grain: 0.04;
+  --grain-blend: soft-light;
+  --elev-1: 0 1px 2px rgba(20, 4, 0, 0.55);
+  --elev-2: 0 6px 22px -8px rgba(20, 4, 0, 0.75);
+  --elev-3: 0 24px 60px -20px rgba(20, 4, 0, 0.88);
+}
+
+/* verdant — dark forest, verdigris accent. */
+html[data-theme='verdant'] {
+  color-scheme: dark;
+  --bg: #0d1512;
+  --bg-sunken: #070f0c;
+  --panel: #131e19;
+  --panel-raised: #1b2a22;
+  --border: #253429;
+  --border-strong: #3a5344;
+  --rule: #1e2c24;
+  --text: #e3ede6;
+  --text-dim: #a2b5a9;
+  --text-faint: #7d9186;
+  --accent: #6cc4a1;
+  --accent-soft: rgba(108, 196, 161, 0.13);
+  --accent-ink: #05130d;
+  --narrator: #dcede2;
+  --player: #a9d9bd;
+  --dialogue: #c9f0d6;
+  --ok: #6cc4a1;
+  --warn: #d3b062;
+  --danger: #dd7a63;
+  --cache-hit: #6cc4a1;
+  --cache-miss: #dd7a63;
+  --glow: rgba(108, 196, 161, 0.08);
+  --grain: 0.035;
+  --grain-blend: soft-light;
+  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --elev-2: 0 6px 20px -8px rgba(0, 0, 0, 0.7);
+  --elev-3: 0 24px 60px -20px rgba(0, 0, 0, 0.85);
+}
+
+/* daylight — real light theme: warm parchment, dark umber ink. */
+html[data-theme='daylight'] {
+  color-scheme: light;
+  --bg: #f6f1e7;
+  --bg-sunken: #ebe3d5;
+  --panel: #fffdf8;
+  --panel-raised: #ffffff;
+  --border: #ded2be;
+  --border-strong: #b8a68b;
+  --rule: #e6dccb;
+  --text: #241c15;
+  --text-dim: #5c4e43;
+  --text-faint: #6d6153;
+  --accent: #96551a;
+  --accent-soft: rgba(150, 85, 26, 0.11);
+  --accent-ink: #fdf8ef;
+  --narrator: #241c15;
+  --player: #8a4a12;
+  --dialogue: #6f3a08;
+  --ok: #1f7048;
+  --warn: #8a5c10;
+  --danger: #a6301f;
+  --cache-hit: #1c7a4f;
+  --cache-miss: #b03a25;
+  --glow: rgba(150, 85, 26, 0.06);
+  --grain: 0.05;
+  --grain-blend: multiply;
+  --elev-1: 0 1px 2px rgba(84, 62, 34, 0.14);
+  --elev-2: 0 4px 16px -6px rgba(84, 62, 34, 0.22);
+  --elev-3: 0 22px 50px -18px rgba(84, 62, 34, 0.3);
+}
+
+/* First load with no stored preference follows the OS. `data-theme-source` is
+   flipped to `manual` the moment the writer picks a theme, which retires this
+   fallback for the rest of the install's life. */
+@media (prefers-color-scheme: light) {
+  html[data-theme='ink']:not([data-theme-source='manual']) {
+    color-scheme: light;
+    --bg: #f6f1e7;
+    --bg-sunken: #ebe3d5;
+    --panel: #fffdf8;
+    --panel-raised: #ffffff;
+    --border: #ded2be;
+    --border-strong: #b8a68b;
+    --rule: #e6dccb;
+    --text: #241c15;
+    --text-dim: #5c4e43;
+    --text-faint: #6d6153;
+    --accent: #96551a;
+    --accent-soft: rgba(150, 85, 26, 0.11);
+    --accent-ink: #fdf8ef;
+    --narrator: #241c15;
+    --player: #8a4a12;
+    --dialogue: #6f3a08;
+    --ok: #1f7048;
+    --warn: #8a5c10;
+    --danger: #a6301f;
+    --cache-hit: #1c7a4f;
+    --cache-miss: #b03a25;
+    --glow: rgba(150, 85, 26, 0.06);
+    --grain: 0.05;
+    --grain-blend: multiply;
+    --elev-1: 0 1px 2px rgba(84, 62, 34, 0.14);
+    --elev-2: 0 4px 16px -6px rgba(84, 62, 34, 0.22);
+    --elev-3: 0 22px 50px -18px rgba(84, 62, 34, 0.3);
+  }
+}
+
+/* ------------------------------------------------------------------- base */
+
+@layer base {
+  * {
+    min-width: 0;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior-y: none;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--text);
+  }
+
+  /* Visible, consistent focus. Never removed — only reshaped. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-hair);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font-family: inherit;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-faint);
+  }
+
+  /* Chrome scrollbars, tuned to the paper. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--border);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--border-strong);
+  }
+}
+
+/* ------------------------------------------------------------- components */
+
+@layer components {
+  /* Section headings: letterspaced small caps, the editorial voice. */
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .eyebrow-accent {
+    color: var(--accent);
+  }
+
+  /* Every number in this product is a metric. Tabular, always. */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1, 'zero' 1;
+    letter-spacing: -0.02em;
+  }
+
+  .hairline {
+    border: 1px solid var(--border);
+  }
+
+  /* Paper grain + a soft light from the top of the page. */
+  .texture-paper {
+    position: relative;
+    background-color: var(--bg);
+    background-image: radial-gradient(120% 70% at 50% -10%, var(--glow) 0%, transparent 62%);
+  }
+
+  .texture-paper::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--grain);
+    mix-blend-mode: var(--grain-blend);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
+  }
+
+  /* Panels get a faint diagonal sheen instead of a drop shadow, so the page
+     still reads as paper rather than glass. */
+  .texture-panel {
+    background-color: var(--panel);
+    background-image: linear-gradient(
+      170deg,
+      color-mix(in oklab, var(--panel-raised) 60%, transparent) 0%,
+      transparent 46%
+    );
+  }
+
+  .card {
+    background-color: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  /* ------------------------------------------------------------------ chat */
+
+  /* Avatars. A fixed circle, so a missing or broken image can never shift the
+     layout — the initials fallback occupies exactly the same box. */
+  .avatar {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background-color: var(--panel-raised);
+    border: 1px solid var(--border);
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--text-dim);
+    user-select: none;
+  }
+
+  .avatar img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .avatar-sm {
+    width: 1.625rem;
+    height: 1.625rem;
+    font-size: 10.5px;
+  }
+
+  .avatar-lg {
+    width: 2.625rem;
+    height: 2.625rem;
+    font-size: 15px;
+  }
+
+  /* Bubbles. The squared-off corner points at the avatar that owns the turn,
+     which is what makes a feed of them read as a conversation. */
+  .bubble {
+    max-width: 100%;
+    padding: 0.6875rem 0.9375rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background-color: var(--panel);
+  }
+
+  .bubble-narrator {
+    border-top-left-radius: var(--radius-sm);
+  }
+
+  .bubble-user {
+    background-color: var(--accent-soft);
+    border-color: color-mix(in oklab, var(--accent) 22%, var(--border));
+    border-top-right-radius: var(--radius-sm);
+  }
+
+  /* Speech inside a bubble sits tighter than it does on the open page: the
+     bubble already provides the margin the prose renderer was adding. The
+     illuminated capital is a page cue, not a chat cue, so it is retired here. */
+  .bubble .prose-rp {
+    font-size: 1rem;
+    line-height: 1.68;
+  }
+
+  .bubble .prose-rp > p:first-child::first-letter {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    float: none;
+    padding: 0;
+    color: inherit;
+    font-weight: inherit;
+  }
+
+  .field {
+    width: 100%;
+    background-color: var(--bg-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.625rem;
+    font-size: 13px;
+    color: var(--text);
+    transition: border-color 140ms var(--ease-out-soft);
+  }
+
+  .field:hover {
+    border-color: var(--border-strong);
+  }
+
+  .field:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .field-sm {
+    padding: 0.3125rem 0.4375rem;
+    font-size: 12px;
+  }
+
+  .label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 0.3125rem;
+  }
+
+  /* -------------------------------------------------------------------- rp */
+
+  /* The roleplay renderer. Long-session reading: 1.72 line-height, 68ch
+     measure, real paragraph rhythm, and dialogue as the loudest ink on the
+     page — because in RP dialogue is the point. */
+  .prose-rp {
+    font-family: var(--font-serif);
+    font-size: 1.0625rem;
+    line-height: 1.72;
+    max-width: var(--measure);
+    color: var(--narrator);
+    font-optical-sizing: auto;
+    hanging-punctuation: first last;
+    text-wrap: pretty;
+  }
+
+  .prose-rp > p {
+    margin: 0 0 1.05em;
+  }
+
+  .prose-rp > p:last-child {
+    margin-bottom: 0;
+  }
+
+  /* An opening line gets a small illuminated capital — a book cue, not a
+     decoration, so it only ever applies to the first paragraph. */
+  .prose-rp > p:first-child::first-letter {
+    font-family: var(--font-display);
+    font-size: 2.9em;
+    line-height: 0.86;
+    float: left;
+    padding: 0.06em 0.08em 0 0;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .prose-rp em {
+    font-style: italic;
+    color: var(--text);
+  }
+
+  .prose-rp strong {
+    font-weight: 650;
+    color: var(--text);
+  }
+
+  /* Spoken dialogue: warmer ink, slightly heavier, so the eye can find speech
+     when skimming a long turn. */
+  .prose-rp .rp-dialogue {
+    color: var(--dialogue);
+    font-weight: 500;
+    font-style: normal;
+  }
+
+  .prose-rp .rp-ooc {
+    display: inline-block;
+    font-family: var(--font-sans);
+    font-size: 0.82em;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--text-dim);
+    background: var(--accent-soft);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    border-radius: var(--radius-sm);
+    padding: 0.2em 0.5em;
+    margin: 0.2em 0;
+  }
+
+  /* A scene break is a printer's ornament, not a rule. */
+  .rp-break {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin: 1.9em 0;
+    color: var(--text-faint);
+  }
+
+  .rp-break::before,
+  .rp-break::after {
+    content: '';
+    height: 1px;
+    flex: 1;
+    background: linear-gradient(to right, transparent, var(--border-strong), transparent);
+  }
+
+  .rp-break-mark {
+    font-family: var(--font-display);
+    font-size: 0.85em;
+    letter-spacing: 0.5em;
+    padding-left: 0.5em;
+  }
+
+  /* Prose inside a compact card (previews, notes, block dumps). */
+  .prose-tight {
+    font-family: var(--font-serif);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-dim);
+  }
+
+  /* ---------------------------------------------------------------- chips */
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 10.5px;
+    line-height: 1;
+    padding: 0.28rem 0.44rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    background: var(--bg-sunken);
+    white-space: nowrap;
+  }
+
+  .chip-hit {
+    color: var(--cache-hit);
+    border-color: color-mix(in oklab, var(--cache-hit) 40%, var(--border));
+    background: color-mix(in oklab, var(--cache-hit) 10%, transparent);
+  }
+
+  .chip-miss {
+    color: var(--cache-miss);
+    border-color: color-mix(in oklab, var(--cache-miss) 40%, var(--border));
+    background: color-mix(in oklab, var(--cache-miss) 10%, transparent);
+  }
+
+  .chip-accent {
+    color: var(--accent);
+    border-color: color-mix(in oklab, var(--accent) 40%, var(--border));
+    background: var(--accent-soft);
+  }
+
+  /* --------------------------------------------------------- interaction */
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    font-size: 12.5px;
+    font-weight: 550;
+    line-height: 1;
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--panel-raised);
+    color: var(--text);
+    cursor: pointer;
+    transition:
+      background-color 130ms var(--ease-out-soft),
+      border-color 130ms var(--ease-out-soft),
+      transform 130ms var(--ease-out-soft);
+  }
+
+  .btn:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    background: color-mix(in oklab, var(--panel-raised) 82%, var(--text) 6%);
+  }
+
+  .btn:active:not(:disabled) {
+    transform: translateY(0.5px);
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--accent) 88%, var(--text));
+    border-color: color-mix(in oklab, var(--accent) 88%, var(--text));
+  }
+
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-dim);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--accent-soft);
+    border-color: var(--border);
+    color: var(--text);
+  }
+
+  .btn-danger {
+    color: var(--danger);
+    border-color: color-mix(in oklab, var(--danger) 40%, var(--border));
+  }
+
+  .btn-danger:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--danger) 12%, transparent);
+    border-color: var(--danger);
+  }
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    color: var(--text-faint);
+    background: transparent;
+    cursor: pointer;
+    transition:
+      color 130ms var(--ease-out-soft),
+      background-color 130ms var(--ease-out-soft),
+      border-color 130ms var(--ease-out-soft);
+  }
+
+  .icon-btn:hover:not(:disabled) {
+    color: var(--text);
+    background: var(--accent-soft);
+    border-color: var(--border);
+  }
+
+  .icon-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .icon-btn-on {
+    color: var(--accent);
+    border-color: color-mix(in oklab, var(--accent) 35%, transparent);
+    background: var(--accent-soft);
+  }
+
+  .tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    padding: 0.4rem 0.15rem 0.5rem;
+    font-size: 11.5px;
+    font-weight: 550;
+    color: var(--text-faint);
+    background: none;
+    border: none;
+    border-bottom: 1.5px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 130ms var(--ease-out-soft);
+  }
+
+  .tab:hover {
+    color: var(--text);
+  }
+
+  .tab[aria-selected='true'] {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+
+  .switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 30px;
+    height: 17px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-sunken);
+    cursor: pointer;
+    padding: 0;
+    transition: background-color 140ms var(--ease-out-soft);
+  }
+
+  .switch::after {
+    content: '';
+    position: absolute;
+    left: 1.5px;
+    width: 11px;
+    height: 11px;
+    border-radius: 999px;
+    background: var(--text-faint);
+    transition: transform 140ms var(--ease-out-soft);
+  }
+
+  .switch[aria-checked='true'] {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .switch[aria-checked='true']::after {
+    transform: translateX(13px);
+    background: var(--accent-ink);
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--rule);
+  }
+
+  .vdivider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--rule);
+  }
+
+  .row-hover:hover {
+    background: var(--accent-soft);
+  }
+}
+
+/* ------------------------------------------------------------- utilities */
+
+@utility hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+@utility snap-carousel {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+@utility snap-item {
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+}
+
+/* Safe-area padding for the mobile composer and tab bar. */
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+@utility mb-safe {
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* A streaming caret. Pure CSS, no layout shift. */
+@utility caret-stream {
+  &::after {
+    content: '';
+    display: inline-block;
+    width: 0.48em;
+    height: 1.05em;
+    margin-left: 0.14em;
+    vertical-align: -0.16em;
+    background: var(--accent);
+    animation: reepi-caret 1.05s steps(2, start) infinite;
+  }
+}
+
+@keyframes reepi-caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.1;
+  }
+}
+
+@keyframes reepi-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reepi-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reepi-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reepi-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes reepi-dash {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-rise {
+  animation: reepi-rise 220ms var(--ease-out-soft) both;
+}
+
+.animate-slide-in {
+  animation: reepi-slide-in 200ms var(--ease-out-soft) both;
+}
+
+.animate-slide-in-left {
+  animation: reepi-slide-in-left 200ms var(--ease-out-soft) both;
+}
+
+.animate-pulse-soft {
+  animation: reepi-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .caret-stream::after {
+    animation: none;
+    opacity: 0.85;
+  }
+}
