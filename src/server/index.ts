@@ -22,6 +22,7 @@ import { TEMPLATES } from '../shared/api.ts';
 
 import chatRoutes from './routes/chat.ts';
 import agenticRoutes from './routes/agentic.ts';
+import creatorRoutes from './routes/creator.ts';
 import libraryRoutes from './routes/library.ts';
 import memoryRoutes from './routes/memory.ts';
 import portabilityRoutes from './routes/portability.ts';
@@ -107,6 +108,7 @@ app.get('/api/diagnose', async (c) => {
 
 app.route('/api', chatRoutes);
 app.route('/api', agenticRoutes);
+app.route('/api', creatorRoutes);
 app.route('/api', libraryRoutes);
 app.route('/api', memoryRoutes);
 app.route('/api', portabilityRoutes);

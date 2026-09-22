@@ -85,6 +85,16 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         },
       },
       {
+        id: 'creator',
+        label: 'Creation assistant',
+        hint: 'ask an agent to write characters, lore, worlds and templates',
+        group: 'Go',
+        run: () => {
+          setPage('creator');
+          onClose();
+        },
+      },
+      {
         id: 'import-export',
         label: 'Import or export',
         hint: 'bundles, character cards, markdown',

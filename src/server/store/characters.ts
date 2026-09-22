@@ -80,7 +80,7 @@ export const characters = {
    * Create a card, cast in the story that authored it.
    *
    * Two rows — the definition and its home membership — so this belongs inside a
-   * `transaction(...)` when it is the only write in flight (`insertBundle` is
+   * `transaction(...)` when it is the only write in flight (`writeStoryBundle` is
    * already wrapped, and `transaction` is not re-entrant, which is why this DAO
    * does not open one itself). Token counts are derived, so they are always
    * recomputed on write.

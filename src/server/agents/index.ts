@@ -47,6 +47,24 @@ export {
 
 export { ARCHIVIST_SYSTEM, runArchivist, normaliseForCompare } from './archivist.ts';
 
+export {
+  CREATOR_LIMITS,
+  CREATOR_SYSTEM,
+  CREATOR_TOOLS,
+  applyCreatorDrafts,
+  applyCreatorTool,
+  creatorState,
+  emptySink,
+  normaliseHistory,
+  renderCreatorBrief,
+  runCreator,
+  safeArgs as safeCreatorArgs,
+  type CreatorDraft,
+  type CreatorOptions,
+  type CreatorSink,
+  type CreatorState,
+} from './creator.ts';
+
 export { SUMMARISER_SYSTEM, runSummarise } from './summariser.ts';
 
 export { runConductor, judgeVariants, estimateConductorCost } from './conductor.ts';

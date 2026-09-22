@@ -16,6 +16,7 @@
 import { create } from 'zustand';
 
 import { initialState } from './initial.ts';
+import { creatorSlice } from './slices/creator.ts';
 import { gettersSlice } from './slices/getters.ts';
 import { instrumentsSlice } from './slices/instruments.ts';
 import { librarySlice } from './slices/library.ts';
@@ -35,6 +36,7 @@ export const useStore = create<Store>((set, get) => {
     ...instrumentsSlice(slice),
     ...portabilitySlice(slice),
     ...templatesSlice(slice),
+    ...creatorSlice(slice),
     ...gettersSlice(slice),
   };
 });
@@ -42,9 +44,12 @@ export const useStore = create<Store>((set, get) => {
 export { IDLE_STREAM } from './initial.ts';
 export { applyTheme } from './theme.ts';
 export type {
+  CreatorState,
+  CreatorTurn,
   Dialog,
   Drawer,
   LiveToolEvent,
+  Page,
   RightTab,
   Store,
   StoryStat,

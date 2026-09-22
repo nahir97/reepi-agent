@@ -5,9 +5,46 @@
  * exactly the kind of copy that drifts: one gains a truncate class, the other does
  * not, and two panels that should look identical stop matching. One definition,
  * one appearance.
+ *
+ * `PageBand` joined them for the same reason once the studio had two full-column
+ * pages (the cast roster and the creation assistant): a page's band is `.topbar`,
+ * like every other column header, so the rule under it is one line across the
+ * window — which only holds while there is one definition of it.
  */
 
 import type { ReactNode } from 'react';
+import { IconChevronLeft } from './icons.tsx';
+
+/**
+ * A page's header: the only way out, what the page is, and its own controls.
+ *
+ * The back control is the *only* way out, which is what makes a full-column page
+ * printable rather than an overlay: a page needs no second close.
+ */
+export function PageBand({
+  title,
+  hint,
+  onBack,
+  actions,
+}: {
+  title: string;
+  hint?: string;
+  onBack: () => void;
+  actions?: ReactNode;
+}) {
+  return (
+    <header className="topbar pt-safe shrink-0 gap-2 border-b border-border px-3" style={{ background: 'var(--panel)' }}>
+      <button type="button" className="icon-btn" onClick={onBack} aria-label="Back to the story">
+        <IconChevronLeft size={16} />
+      </button>
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate font-display text-[15px] leading-tight font-semibold">{title}</h1>
+        {hint ? <p className="num truncate text-[10.5px] text-faint">{hint}</p> : null}
+      </div>
+      {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
+    </header>
+  );
+}
 
 /**
  * A section heading inside a panel: an eyebrow, an optional hint, an optional

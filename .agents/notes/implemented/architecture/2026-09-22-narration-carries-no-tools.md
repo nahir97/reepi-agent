@@ -29,8 +29,9 @@ call.**
 
 `composer.ts` never emits a `tools` array. The agentic passes in `src/server/agents/` each
 build their own small context, make their own call, and write their result to the database —
-where it becomes an ordinary block (`director`, `retrieval`, `state`) or a note the writer can
-accept. Nothing an agent produces is spliced into the narration transcript.
+where it becomes an ordinary block (`director`, `retrieval`, `state`), an ordinary row (a card, a
+lore entry, a template), or a note the writer can accept. Nothing an agent produces is spliced
+into the narration transcript.
 
 The shape has three load-bearing properties:
 
@@ -58,6 +59,16 @@ ledger rather than customising an assistant — and those passes are side-channe
 is accounted under their own kind. A template may change *what the narrator is told*; it may not
 change *what the machinery does*.
 
+**The creation assistant is a pass like the others, and its tools are the routes' own writes.**
+Since [the creation assistant](../feature/2026-09-22-creative-creation-assistant.md), a writer can
+ask an agent to write cards, lore entries, directive blocks, templates and whole stories. That does
+not move this boundary: `CREATOR_TOOLS` is a second side-channel caller of the same DAOs and the
+same validators the library routes use, it is offered only inside its own `POST /api/creator`
+request, and it can no more reach the narration payload than a Director call can. What it *writes*
+is world material, which is exactly the material the frozen prefix is made of — so a creator turn
+does re-price the prefix. That cost is deliberately visible on the page (the moved blocks, from the
+server's own plan) rather than being a reason to invent a path into the payload.
+
 ## Verification
 
 `npm run verify:cache` shows the narration payload holding 85–88% cache hits across turns —
@@ -67,7 +78,7 @@ The `/api/diagnose` endpoint repeats a ~4k-token payload and reports the measure
 so the assumption is checked against the API's own accounting rather than asserted.
 
 Each pass records to the cost ledger under its own kind (`director`, `archivist`,
-`summarise`, `conductor`, `judge`), visible in the Cost & cache panel.
+`summarise`, `conductor`, `judge`, `creator`), visible in the Cost & cache panel.
 
 ## Alternatives considered
 

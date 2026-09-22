@@ -52,7 +52,8 @@ import { formatTokens } from '../../shared/cost.ts';
 import type { Character, Persona, Story } from '../../shared/types.ts';
 import { useStore, type CardKind } from '../store.ts';
 import { Avatar } from './Avatar.tsx';
-import { IconChevronLeft, IconPen, IconPlus, IconSearch, IconUser, IconUsers } from './icons.tsx';
+import { PageBand } from './panel.tsx';
+import { IconPen, IconPlus, IconSearch, IconUser, IconUsers } from './icons.tsx';
 
 /* ------------------------------------------------------------------- model */
 
@@ -286,7 +287,7 @@ export function CastPage() {
   if (scope === 'story' && !bundle) {
     return (
       <div className="flex h-full flex-col">
-        <Band onBack={() => setPage('story')} title="Cast" />
+        <PageBand onBack={() => setPage('story')} title="Cast" />
         <p className="px-4 py-6 text-[12.5px] text-faint">Open a story first — a cast belongs to one.</p>
       </div>
     );
@@ -294,7 +295,7 @@ export function CastPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ background: 'var(--bg)' }}>
-      <Band
+      <PageBand
         onBack={() => setPage('story')}
         title={scope === 'library' ? 'Character library' : isChat ? `Cast of ${bundle?.story.title ?? ''}` : 'Cast'}
         hint={
@@ -511,40 +512,6 @@ function chatSourceFor(entry: RosterEntry, storyId: string | null): string | und
   if (entry.homeStoryId !== null) return undefined;
   if (!storyId || !entry.castHere) return undefined;
   return storyId;
-}
-
-/* -------------------------------------------------------------------- chrome */
-
-/**
- * The page's band. `.topbar`, like every other column's header, so the rule under
- * it lines up with the library rail's and the payload rail's across the window.
- */
-function Band({
-  title,
-  hint,
-  onBack,
-  actions,
-}: {
-  title: string;
-  hint?: string;
-  onBack: () => void;
-  actions?: ReactNode;
-}) {
-  return (
-    <header className="topbar pt-safe shrink-0 gap-2 border-b border-border px-3" style={{ background: 'var(--panel)' }}>
-      {/* The way out, and it is the *only* way out — which is why the page is a
-          full surface rather than an overlay: a page with a back control needs no
-          second close. */}
-      <button type="button" className="icon-btn" onClick={onBack} aria-label="Back to the story">
-        <IconChevronLeft size={16} />
-      </button>
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate font-display text-[15px] leading-tight font-semibold">{title}</h1>
-        {hint ? <p className="num truncate text-[10.5px] text-faint">{hint}</p> : null}
-      </div>
-      {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : null}
-    </header>
-  );
 }
 
 /* -------------------------------------------------------------- roster card */

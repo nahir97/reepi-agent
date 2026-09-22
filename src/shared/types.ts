@@ -538,7 +538,14 @@ export type Memory = {
  * under another pass's name makes the cost panel silently wrong — each agentic
  * pass therefore has its own kind.
  */
-export type CostEventKind = 'narration' | 'director' | 'archivist' | 'summarise' | 'conductor' | 'judge';
+export type CostEventKind =
+  | 'narration'
+  | 'director'
+  | 'archivist'
+  | 'summarise'
+  | 'conductor'
+  | 'judge'
+  | 'creator';
 
 export type CostEvent = {
   id: number;

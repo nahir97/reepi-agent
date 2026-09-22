@@ -195,7 +195,7 @@ mod.get('/stories/:id/characters', (c) => {
  * Write a new card in this story, cast here.
  *
  * Card and home membership are two rows, so they commit together.
- * `characters.create` stays flat because `insertBundle` already supplies a
+ * `characters.create` stays flat because `writeStoryBundle` already supplies a
  * transaction and `transaction()` is not re-entrant.
  *
  * The cast of a chat is borrowed, not written: it is exactly the card the chat was

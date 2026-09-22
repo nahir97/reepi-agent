@@ -13,6 +13,8 @@
 export { useStore } from './store/index.ts';
 export type {
   CardKind,
+  CreatorState,
+  CreatorTurn,
   Dialog,
   Drawer,
   LiveToolEvent,

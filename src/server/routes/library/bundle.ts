@@ -102,11 +102,20 @@ export function recreateStoryBundle(
 ): StoryBundle {
   // Ten tables, one unit of work. A partial copy would be unrecoverable, so the
   // whole rebuild commits or nothing does.
-  return transaction(() => insertBundle(seed, overrides));
+  return transaction(() => writeStoryBundle(seed, overrides));
 }
 
-/** The write sequence itself. Always reached through `recreateStoryBundle`. */
-function insertBundle(
+/**
+ * The write sequence itself, **without** opening a transaction.
+ *
+ * `recreateStoryBundle` is the safe door and every ordinary caller takes it. This
+ * exit exists for the one caller that has more to write in the same unit of work:
+ * the creation assistant drafts a story *and* its cast, lore and blocks in one
+ * request, and `transaction()` is not re-entrant — so the assistant opens one
+ * transaction and calls this inside it. Calling it outside a transaction leaves a
+ * half-built story behind on failure, which is exactly what the wrapper prevents.
+ */
+export function writeStoryBundle(
   seed: BundleSeed,
   overrides: Partial<Story> = {},
 ): StoryBundle {

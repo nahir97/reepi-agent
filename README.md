@@ -161,6 +161,7 @@ and the agentic work happens in **separate contexts**:
 | **Archivist** | Extracts durable facts into a memory index | Paid once per scene, not per turn |
 | **Summariser** | Compresses trimmed history into a rolling synopsis | Recovers what the history budget dropped, once |
 | **Conductor** | Drafts N continuations, a cheap judge picks one | See below |
+| **Creation assistant** | Writes characters, lorebooks, directive blocks, templates and whole stories from a request | Produces world material as ordinary rows — the same tables the studio's own editors write — and its tools are a side-channel call, so the prefix it re-prices is the content's, never the payload's |
 
 ### 5. The Conductor: N drafts for barely more than one
 
@@ -226,6 +227,19 @@ click away and none of it is on the default screen.
   card's greeting. Who you are is a chip beside the composer, switchable mid-chat; switching
   re-prices the payload from the persona block on, which is the one cache cost the interface
   states before you take it. The pencil in the card's footer is still the editor.
+- **A creation assistant that builds the world while you describe it.** A **Creation assistant**
+  page takes a request in plain language — "file a lorebook about the drowned archive", "write
+  two characters for the court", "start a story from this pitch" — and an agent writes into the
+  app with real tools: character cards cast into the story, lorebook entries with trigger keys,
+  the scenario, story bible, genre, style, contract and instruction blocks, reusable prompt
+  templates, and whole new stories complete with an opening scene, a persona and a cast. It runs
+  as its own side-channel call, so the narration request stays pristine and cacheable, and it
+  never writes prose, dialogue or your persona. It also never quietly overwrites writing you did:
+  a directive block that already has text is refused unless you tick **Allow rewriting** for that
+  request — and because what it writes *is* the frozen prefix, every turn reports what it made,
+  what it revised, what it refused, and which blocks moved (measured: one card added re-priced the
+  cast block and everything behind it, and nothing before it, at 0.671 → 0.573 predicted hit rate).
+  It can revise a card or an entry by name; it cannot delete anything.
 - **Prompt templates and macros.** The blocks you author — voice contract, genre, style, bible,
   scenario, exemplars, instruction — can be saved as named templates and applied to any story in
   one action, singly or several at once. Every block accepts `{{macros}}` (`{{char}}`, `{{user}}`,
@@ -354,6 +368,7 @@ POST /api/stories/:id/director  → DirectorResult
 POST /api/stories/:id/archivist → ArchivistResult
 POST /api/stories/:id/summarise → SummaryResult
 POST /api/stories/:id/conductor → ConductorResult      N drafts, one judge
+POST /api/creator               → CreatorResult        builds characters, lore, blocks, templates, stories
 POST /api/characters/:id/chat   → Story                open or start their 1:1 chat
 GET  /api/characters            → CastIndex            every card, plus every cast membership
 POST /api/stories/:id/cast      → Character[]          adopt an existing card into a cast
@@ -399,12 +414,13 @@ src/
                      and the persona it freezes when that world is deleted
     lorebook.ts      keyword scan, budget packing, BM25 + term extraction
     orchestrator.ts  turn engine, trim hysteresis, calibration, ledger
-    agents/          director / archivist / summariser / conductor / diagnose
+    agents/          director / archivist / summariser / conductor / diagnose / creator
     routes/
       library/       shared validation, sanitise, bundle recreation, routes
       chat.ts        plan (dry run) + chat (streamed SSE)
       templates.ts   prompt-template CRUD + the macro reference
       agentic.ts     director, archivist, summarise, conductor, judge, warm
+      creator.ts     the creation assistant's one endpoint
       memory.ts      memories, recall
       portability.ts export/import: JSON, markdown, chara v2 PNG
       insights.ts    the cost ledger read model
@@ -415,15 +431,16 @@ src/
       types.ts       the Store interface and the store's vocabulary
       runtime.ts     shared mutable state: streamSeq, planTimer, activeController
       stream.ts      the StreamEvent reducer
-      slices/        library, turns, messages, instruments, portability, templates, getters
+      slices/        library, turns, messages, instruments, portability, templates, creator, getters
     speakers.ts      resolves a turn's speaker and portrait against the cast
     theme.ts         theme labels and swatch gradients, one definition
     api.ts           typed client + SSE frame reader
     components/
       Library.tsx        the conversation list and its day filing, shared by rail and sheet
       CastPage.tsx       the cast roster, this story's and the library's, and the way into a chat
+      CreatorPage.tsx    the creation assistant: a request, its receipt, and the prefix it moved
       Sidebar.tsx        the library rail: band, list, scenes, studio theme
-      StudioNav.tsx      cast / cost / settings / transfer / duplicate, one list for both hosts
+      StudioNav.tsx      cast / assistant / cost / settings / transfer / duplicate, one list for both hosts
       StoryActions.tsx   a story row's overflow menu, viewport-anchored
       Transcript.tsx     the chat feed, scroll-stick policy, streaming states
       MessageBubble.tsx  avatar + name + bubble, aligned per speaker
@@ -433,7 +450,7 @@ src/
       MacroPicker.tsx    the macro reference (live values) and the insert-a-token control
       CacheMeter.tsx     the pill, and the full payload meter behind it
       Inspector.tsx      rail chrome: the band, the menu, the open section
-      panel.tsx          SectionTitle / Card / Metric, shared by every panel
+      panel.tsx          SectionTitle / Card / Metric / PageBand, shared by every panel and page
       editors.tsx        cost ledger + full character/persona editors
       MobileBar.tsx      app header and the navigation sheet
       modals.tsx         barrel over dialogs/

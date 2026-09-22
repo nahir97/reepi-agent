@@ -44,6 +44,7 @@ const KIND_LABEL: Record<CostEventKind, string> = {
   summarise: 'Summariser',
   conductor: 'Conductor',
   judge: 'Judge',
+  creator: 'Creation assistant',
 };
 
 const KIND_COLOR: Record<CostEventKind, string> = {
@@ -53,6 +54,7 @@ const KIND_COLOR: Record<CostEventKind, string> = {
   summarise: 'var(--text-dim)',
   conductor: 'var(--warn)',
   judge: 'var(--danger)',
+  creator: 'var(--ok)',
 };
 
 export function Insights() {

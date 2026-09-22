@@ -13,6 +13,8 @@ import type {
   BranchBody,
   CastIndex,
   ConductorResult,
+  CreatorRequest,
+  CreatorResult,
   DiagnoseReport,
   DirectorResult,
   ExportFormat,
@@ -417,6 +419,16 @@ export const api = {
       worstCaseCostUsd: number;
       model: string;
     }>(`/api/stories/${enc(storyId)}/conductor`, json('POST', { variants, estimateOnly: true }, signal)),
+
+  /* -------------------------------------------------- creation assistant */
+
+  /**
+   * World-building. `storyId` is optional because templates are app-scoped and a
+   * turn may create a story; `allowOverwrite` is the writer's consent to replace a
+   * directive block that already has text.
+   */
+  creator: (body: CreatorRequest, signal?: AbortSignal) =>
+    send<CreatorResult>('/api/creator', json('POST', body, signal)),
 
   /* ------------------------------------------------------------- insights */
 

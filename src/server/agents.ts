@@ -14,6 +14,7 @@ export {
   runConductor,
   judgeVariants,
   runDiagnose,
+  runCreator,
   activeScene,
   personaNameFor,
   estimateConductorCost,

@@ -13,7 +13,7 @@
 
 import type { ReactElement } from 'react';
 import { useStore } from '../store.ts';
-import { IconChart, IconCopy, IconDownload, IconSettings, IconTemplate, IconUsers } from './icons.tsx';
+import { IconChart, IconCopy, IconDownload, IconSettings, IconTemplate, IconUsers, IconWand } from './icons.tsx';
 
 type StudioEntry = {
   label: string;
@@ -34,6 +34,14 @@ export function StudioNav({ onNavigate, compact = false }: { onNavigate?: () => 
        the cast *page*, not the payload rail's Cast section: a writer adding a
        person should not have to reach them through the request that carries them. */
     { label: 'Cast', hint: 'your character library, and this story’s cast', icon: IconUsers, run: () => setPage('cast') },
+    /* The assistant sits beside the cast because it is the same material at an
+       earlier distance: not a roster you fill in, but the thing that fills one. */
+    {
+      label: 'Creation assistant',
+      hint: 'an agent that writes characters, lore, worlds and templates',
+      icon: IconWand,
+      run: () => setPage('creator'),
+    },
     /* The ledger, not the command palette. The palette is a way to *reach* things
        — opening it from a row labelled "Cost & cache" made the row a second
        launcher for navigation rather than the destination it named. */

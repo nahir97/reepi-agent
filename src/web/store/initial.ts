@@ -11,7 +11,7 @@
  */
 
 import { storedTheme } from './theme.ts';
-import type { Store, StreamingState } from './types.ts';
+import type { CreatorState, Store, StreamingState } from './types.ts';
 
 export const IDLE_STREAM: StreamingState = {
   active: false,
@@ -26,6 +26,15 @@ export const IDLE_STREAM: StreamingState = {
   error: null,
   startedAt: 0,
 };
+
+/**
+ * The creation assistant's rest state.
+ *
+ * Also its reset value, for the same reason `IDLE_STREAM` is: the log is a page's
+ * memory and "clear" has to mean empty, not "empty except for the turns nobody
+ * cleared". The log array is only ever replaced, never appended to in place.
+ */
+export const IDLE_CREATOR: CreatorState = { log: [], busy: false, error: null };
 
 /**
  * Where the rail's open state is remembered, and how it is read back.
@@ -71,6 +80,8 @@ export function initialState(): Omit<
   | 'switchScene'
   | 'updateScene'
   | 'archiveScene'
+  | 'runCreator'
+  | 'clearCreatorLog'
   | 'createCard'
   | 'startChatWith'
   | 'loadCastLibrary'
@@ -112,6 +123,9 @@ export function initialState(): Omit<
   return {
     promptTemplates: [],
     macros: [],
+    /* A page's log, not the studio's memory: a reload loses the conversation and
+       keeps everything the conversation wrote. */
+    creator: { ...IDLE_CREATOR },
     stories: [],
     storyStats: {},
     activeStoryId: null,

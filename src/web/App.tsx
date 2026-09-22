@@ -29,6 +29,7 @@ import {
   StorySettingsDialog,
 } from './components/modals.tsx';
 import { CastPage } from './components/CastPage.tsx';
+import { CreatorPage } from './components/CreatorPage.tsx';
 import { Toasts } from './components/toast.tsx';
 import { CommandPalette } from './components/palette.tsx';
 import { IconFeather, IconPanelRight, IconPlus, IconSearch } from './components/icons.tsx';
@@ -105,6 +106,8 @@ export function App() {
         <main className="flex min-w-0 flex-1 flex-col">
           {page === 'cast' ? (
             <CastPage />
+          ) : page === 'creator' ? (
+            <CreatorPage />
           ) : (
             <>
               <AppHeader />

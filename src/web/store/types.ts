@@ -10,6 +10,8 @@
 import type {
   AccountInfo,
   CastIndex,
+  CreatorCreated,
+  CreatorUpdate,
   DiagnoseReport,
   ExportFormat,
   Insights,
@@ -46,16 +48,50 @@ export type RailView = RightTab | null;
 /**
  * What the centre column is showing.
  *
- * `story` is the transcript — the product. `cast` replaces the centre column
- * while the writer is building their roster, and `null` means *no page*: the
- * story, which is what every other surface returns to.
+ * `story` is the transcript — the product. `cast` and `creator` replace the centre
+ * column while the writer is building rather than writing: a roster needs the
+ * window to be scanned, and the creation assistant needs it for a request box and
+ * the log of what it made. `null` is not a page — the story is what every other
+ * surface returns to.
  *
- * A page rather than a dialog because a roster needs the window: browsing is
- * scanning, and a 54rem frame over the prose is the wrong shape for it. It only
- * ever replaces the *centre* — the library rail keeps its story list on a wide
- * screen, and the phone gets a back control, so neither loses its way out.
+ * A page rather than a dialog because these are places you *stay*: the cast page's
+ * card editor closes back to a page that never went away, and a 54rem frame
+ * floating over the prose is the wrong shape for a list or a conversation.
  */
-export type Page = 'story' | 'cast';
+export type Page = 'story' | 'cast' | 'creator';
+
+/**
+ * One exchange with the creation assistant, as the page remembers it.
+ *
+ * Session-only on purpose (see the feature Agent Note): the durable record of a
+ * turn is the rows it wrote, and those are read back from the server like any
+ * other content. This is the *display* of what just happened — the receipt — which
+ * is why it carries the refusals and the replaced blocks too.
+ */
+export type CreatorTurn = {
+  id: string;
+  request: string;
+  reply: string;
+  created: CreatorCreated[];
+  updated: CreatorUpdate[];
+  /** Frozen blocks this turn replaced. Each one re-priced the prefix behind it. */
+  replacedBlocks: EditableBlock[];
+  refused: { target: string; reason: string }[];
+  /** Set when this turn minted a story, so the receipt can offer to open it. */
+  newStoryId: string | null;
+  costUsd: number;
+  /** Whether rewriting was enabled for this turn — the log has to say why it could. */
+  allowOverwrite: boolean;
+  at: number;
+};
+
+export type CreatorState = {
+  /** Oldest first, so the page reads like a conversation. */
+  log: CreatorTurn[];
+  busy: boolean;
+  /** Why the last turn failed, held for an inline line rather than only a toast. */
+  error: string | null;
+};
 
 /**
  * `nav` is the phone's menu-and-library sheet; `right` is the story inspector.
@@ -151,6 +187,10 @@ export type Store = {
    */
   macros: MacroInfo[];
 
+  /* -------------------------------------------------- creation assistant */
+  /** The session's exchanges, and whether one is in flight. Never persisted. */
+  creator: CreatorState;
+
   /* -------------------------------------------------------------- chrome */
   theme: Theme;
   /** Whether the payload rail is open on a wide screen. Persisted. */
@@ -190,6 +230,19 @@ export type Store = {
   switchScene: (sceneId: string) => Promise<void>;
   updateScene: (sceneId: string, patch: Partial<Scene>) => Promise<void>;
   archiveScene: (sceneId: string) => Promise<void>;
+
+  /**
+   * Ask the creation assistant for world material.
+   *
+   * `allowOverwrite` is the writer's per-request consent to replace a directive
+   * block that already has text; without it the server refuses and the receipt
+   * says so. The action refreshes everything a turn could have moved — the bundle,
+   * the cast library, the templates, the story list and the payload plan — so what
+   * the page shows after a turn is the database's answer, not the model's claim.
+   */
+  runCreator: (input: { text: string; allowOverwrite: boolean }) => Promise<void>;
+  /** Drop this session's log. The rows it wrote are untouched. */
+  clearCreatorLog: () => void;
 
   /**
    * Add a card, then open its editor. Living here rather than in the host is what
