@@ -26,6 +26,7 @@ export { prefixes, type PrefixRecord } from './prefixes.ts';
 export { settings } from './settings.ts';
 export { warmups, type Warmup } from './warmups.ts';
 export { templates } from './templates.ts';
+export { creator } from './creator.ts';
 
 /* The generic row plumbing, re-exported for callers that bind raw SQL. */
 export { type Row, num, str } from './rows.ts';

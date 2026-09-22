@@ -227,19 +227,22 @@ click away and none of it is on the default screen.
   card's greeting. Who you are is a chip beside the composer, switchable mid-chat; switching
   re-prices the payload from the persona block on, which is the one cache cost the interface
   states before you take it. The pencil in the card's footer is still the editor.
-- **A creation assistant that builds the world while you describe it.** A **Creation assistant**
-  page takes a request in plain language — "file a lorebook about the drowned archive", "write
-  two characters for the court", "start a story from this pitch" — and an agent writes into the
-  app with real tools: character cards cast into the story, lorebook entries with trigger keys,
-  the scenario, story bible, genre, style, contract and instruction blocks, reusable prompt
-  templates, and whole new stories complete with an opening scene, a persona and a cast. It runs
-  as its own side-channel call, so the narration request stays pristine and cacheable, and it
-  never writes prose, dialogue or your persona. It also never quietly overwrites writing you did:
-  a directive block that already has text is refused unless you tick **Allow rewriting** for that
-  request — and because what it writes *is* the frozen prefix, every turn reports what it made,
-  what it revised, what it refused, and which blocks moved (measured: one card added re-priced the
-  cast block and everything behind it, and nothing before it, at 0.671 → 0.573 predicted hit rate).
-  It can revise a card or an entry by name; it cannot delete anything.
+- **A creation assistant with its own chat.** A **Creation assistant** row sits above your stories
+  in the library rail — it is a conversation you come back to, not a dialog you summon from inside a
+  story, and it is reachable before you have a story at all. Ask it in plain language — "file a
+  lorebook about the drowned archive", "write two characters for the court", "start a story from
+  this pitch" — and it writes into the app with real tools: character cards, lorebook entries with
+  trigger keys, the scenario, story bible, genre, style, contract and instruction blocks, reusable
+  prompt templates, and whole new stories complete with an opening scene, a persona and a cast. Two
+  controls keep it honest: **Write into** names the story a turn may touch (or *No story*, where
+  characters become library cards any story can adopt later), and **Allow rewriting** is off by
+  default so a directive block that already has text is never quietly replaced. Because what it
+  writes *is* the frozen prefix, every turn reports what it made, what it revised, what it refused
+  and which blocks moved (measured: one card added re-priced the cast block and everything behind it
+  and nothing before it, at 0.671 → 0.573 predicted hit rate). The conversation is stored, so a
+  reload lands you back in it with every receipt intact; **Stop** ends a turn without recording
+  anything, **New chat** clears the conversation and deletes none of the content. It never writes
+  prose, dialogue or your persona, and it cannot delete anything.
 - **Prompt templates and macros.** The blocks you author — voice contract, genre, style, bible,
   scenario, exemplars, instruction — can be saved as named templates and applied to any story in
   one action, singly or several at once. Every block accepts `{{macros}}` (`{{char}}`, `{{user}}`,
@@ -368,7 +371,9 @@ POST /api/stories/:id/director  → DirectorResult
 POST /api/stories/:id/archivist → ArchivistResult
 POST /api/stories/:id/summarise → SummaryResult
 POST /api/stories/:id/conductor → ConductorResult      N drafts, one judge
-POST /api/creator               → CreatorResult        builds characters, lore, blocks, templates, stories
+GET  /api/creator/messages      → CreatorMessage[]     the assistant's own stored conversation
+POST /api/creator               → CreatorResponse      one turn: builds characters, lore, blocks, stories
+DELETE /api/creator/messages    → { ok }               new chat: the conversation goes, the content stays
 POST /api/characters/:id/chat   → Story                open or start their 1:1 chat
 GET  /api/characters            → CastIndex            every card, plus every cast membership
 POST /api/stories/:id/cast      → Character[]          adopt an existing card into a cast
@@ -404,7 +409,7 @@ src/
     text.ts          browser-safe string helpers (no node: imports)
   server/
     db.ts            schema, additive migrations, transaction()
-    store/           13 DAO modules behind index.ts — mapper lives beside its DAO
+    store/           the DAO modules behind index.ts — mapper lives beside its DAO
     deepseek.ts      SSE client, usage/cache accounting, retries
     composer.ts      the block-ordered, cache-stable payload builder; expands macros
     macros.ts        what each macro means for a story, and the reference read model
@@ -420,7 +425,7 @@ src/
       chat.ts        plan (dry run) + chat (streamed SSE)
       templates.ts   prompt-template CRUD + the macro reference
       agentic.ts     director, archivist, summarise, conductor, judge, warm
-      creator.ts     the creation assistant's one endpoint
+      creator.ts     the assistant's own conversation, and one turn of it
       memory.ts      memories, recall
       portability.ts export/import: JSON, markdown, chara v2 PNG
       insights.ts    the cost ledger read model
@@ -436,9 +441,9 @@ src/
     theme.ts         theme labels and swatch gradients, one definition
     api.ts           typed client + SSE frame reader
     components/
-      Library.tsx        the conversation list and its day filing, shared by rail and sheet
+      Library.tsx        the conversation list, its day filing, and the assistant's own row
       CastPage.tsx       the cast roster, this story's and the library's, and the way into a chat
-      CreatorPage.tsx    the creation assistant: a request, its receipt, and the prefix it moved
+      CreatorPage.tsx    the assistant's own chat: target, receipt per turn, and the prefix it moved
       Sidebar.tsx        the library rail: band, list, scenes, studio theme
       StudioNav.tsx      cast / assistant / cost / settings / transfer / duplicate, one list for both hosts
       StoryActions.tsx   a story row's overflow menu, viewport-anchored

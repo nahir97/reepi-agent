@@ -10,8 +10,6 @@
 import type {
   AccountInfo,
   CastIndex,
-  CreatorCreated,
-  CreatorUpdate,
   DiagnoseReport,
   ExportFormat,
   Insights,
@@ -23,6 +21,7 @@ import type {
 } from '../../shared/api.ts';
 import type {
   ChatRequest,
+  CreatorMessage,
   DirectorNote,
   EditableBlock,
   Message,
@@ -61,34 +60,29 @@ export type RailView = RightTab | null;
 export type Page = 'story' | 'cast' | 'creator';
 
 /**
- * One exchange with the creation assistant, as the page remembers it.
+ * The creation assistant's conversation.
  *
- * Session-only on purpose (see the feature Agent Note): the durable record of a
- * turn is the rows it wrote, and those are read back from the server like any
- * other content. This is the *display* of what just happened — the receipt — which
- * is why it carries the refusals and the replaced blocks too.
+ * App-scoped and read back from the server, not held as a page's private log: the
+ * assistant is a studio surface, so a reload has to land the writer in the same
+ * conversation. What it *wrote* is durable elsewhere — the thread is only what was
+ * said.
  */
-export type CreatorTurn = {
-  id: string;
-  request: string;
-  reply: string;
-  created: CreatorCreated[];
-  updated: CreatorUpdate[];
-  /** Frozen blocks this turn replaced. Each one re-priced the prefix behind it. */
-  replacedBlocks: EditableBlock[];
-  refused: { target: string; reason: string }[];
-  /** Set when this turn minted a story, so the receipt can offer to open it. */
-  newStoryId: string | null;
-  costUsd: number;
-  /** Whether rewriting was enabled for this turn — the log has to say why it could. */
-  allowOverwrite: boolean;
-  at: number;
-};
-
 export type CreatorState = {
-  /** Oldest first, so the page reads like a conversation. */
-  log: CreatorTurn[];
-  busy: boolean;
+  /** The stored conversation, oldest first. */
+  thread: CreatorMessage[];
+  /** True once the thread has been read — an empty thread and an unread one differ. */
+  loaded: boolean;
+  /** The ask in flight, painted as a bubble while it runs. `null` when idle. */
+  pending: string | null;
+  /**
+   * The story this chat writes into, or `null` for no world at all.
+   *
+   * Explicit on purpose: the assistant used to write into whatever story happened
+   * to be open, which meant a turn could land in a world the writer was not
+   * looking at. Nothing selects this automatically except a story the assistant
+   * just created for the turn.
+   */
+  targetStoryId: string | null;
   /** Why the last turn failed, held for an inline line rather than only a toast. */
   error: string | null;
 };
@@ -231,18 +225,25 @@ export type Store = {
   updateScene: (sceneId: string, patch: Partial<Scene>) => Promise<void>;
   archiveScene: (sceneId: string) => Promise<void>;
 
+  /** Read the assistant's stored conversation. */
+  loadCreatorThread: () => Promise<void>;
   /**
-   * Ask the creation assistant for world material.
+   * Send one ask to the creation assistant.
    *
    * `allowOverwrite` is the writer's per-request consent to replace a directive
    * block that already has text; without it the server refuses and the receipt
-   * says so. The action refreshes everything a turn could have moved — the bundle,
-   * the cast library, the templates, the story list and the payload plan — so what
-   * the page shows after a turn is the database's answer, not the model's claim.
+   * says so. The action refreshes everything a turn could have moved — the bundle
+   * of the story it wrote into, the cast library, the templates, the story list —
+   * so what the page shows after a turn is the database's answer, not the model's
+   * claim.
    */
-  runCreator: (input: { text: string; allowOverwrite: boolean }) => Promise<void>;
-  /** Drop this session's log. The rows it wrote are untouched. */
-  clearCreatorLog: () => void;
+  sendCreator: (input: { text: string; allowOverwrite: boolean }) => Promise<void>;
+  /** Stop the turn in flight. Nothing is recorded, and nothing was written. */
+  stopCreator: () => void;
+  /** Start a new chat: the conversation goes, everything it wrote stays. */
+  startNewCreatorChat: () => Promise<void>;
+  /** Point the chat at a story, or at no world at all. */
+  setCreatorTarget: (storyId: string | null) => void;
 
   /**
    * Add a card, then open its editor. Living here rather than in the host is what

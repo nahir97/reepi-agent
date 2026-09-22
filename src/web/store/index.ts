@@ -45,7 +45,6 @@ export { IDLE_STREAM } from './initial.ts';
 export { applyTheme } from './theme.ts';
 export type {
   CreatorState,
-  CreatorTurn,
   Dialog,
   Drawer,
   LiveToolEvent,

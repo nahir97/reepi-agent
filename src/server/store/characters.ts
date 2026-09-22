@@ -84,10 +84,15 @@ export const characters = {
    * already wrapped, and `transaction` is not re-entrant, which is why this DAO
    * does not open one itself). Token counts are derived, so they are always
    * recomputed on write.
+   *
+   * A **null home** means a library card with no world yet: the assistant can
+   * write a character before any story exists, and any story can adopt it later.
+   * That is one row, not two — there is no cast to be a member of — which is the
+   * same state a card reaches when the story that authored it is deleted.
    */
-  create(homeStoryId: string, init: Partial<Character> = {}): Character {
+  create(homeStoryId: string | null, init: Partial<Character> = {}): Character {
     const now = Date.now();
-    const order = init.order ?? nextCastOrder(homeStoryId);
+    const order = init.order ?? (homeStoryId ? nextCastOrder(homeStoryId) : 0);
 
     const character: Character = {
       id: newId(),
@@ -123,12 +128,15 @@ export const characters = {
       );
 
     /* The home story is a cast like any other. Without this row the card would
-       exist but never reach a payload — a silent orphan. */
-    getDb()
-      .prepare(
-        'INSERT INTO story_cast (story_id, character_id, sort_order, created_at) VALUES (?,?,?,?)',
-      )
-      .run(homeStoryId, character.id, character.order, now);
+       exist but never reach a payload — a silent orphan. A card with no home has
+       no cast to join, and is adopted on purpose or not at all. */
+    if (homeStoryId) {
+      getDb()
+        .prepare(
+          'INSERT INTO story_cast (story_id, character_id, sort_order, created_at) VALUES (?,?,?,?)',
+        )
+        .run(homeStoryId, character.id, character.order, now);
+    }
 
     return character;
   },

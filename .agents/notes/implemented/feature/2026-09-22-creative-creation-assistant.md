@@ -29,8 +29,13 @@ The design questions were not about plumbing. They were:
 ## Decision
 
 **A fifth side-channel pass, `src/server/agents/creator.ts`, with eight tools, exposed as one
-route (`POST /api/creator`) and one page (`CreatorPage`). Its conversation is session-only; its
-output is ordinary rows.**
+route (`POST /api/creator`) and one page (`CreatorPage`). Its output is ordinary rows.**
+
+The two questions this note answers only in their first form are its *conversation's home* and its
+*write target*. Both were revisited immediately, and
+[the assistant is its own conversation](2026-09-22-assistant-is-its-own-conversation.md) now owns
+them: the chat is app-scoped and persisted, and the story a turn writes into is explicit. Everything
+below about the tools, the consent rule, the receipt and the transaction still stands.
 
 **It writes directly, not into a queue.** A Director note is a *suggestion about an existing
 scene*; a character card is *new material the writer asked for by name*. Requiring a second
@@ -74,11 +79,15 @@ lore entries, 6 templates, 8,000 characters per block, 2,000 per card field, 4,0
 Excess calls are refused with a reason and the rest of the batch still applies — a partial success
 that is *reported* is better than a whole request that fails because the model miscounted.
 
-**The conversation is the page's, not the studio's.** The log lives in the zustand store and the
-page sends it back as bounded `history` so a follow-up can say "the second one". The durable record
-of a turn is the rows it wrote, which the client re-reads through the ordinary bundle, cast-library,
-template and plan reads after every turn. A reload loses the conversation and keeps the world —
-the same bargain every other agent makes.
+**The conversation is the studio's, and the target is explicit.** *Superseded — see
+[the assistant is its own conversation](2026-09-22-assistant-is-its-own-conversation.md).* The
+original decision was a session-only log in the zustand store, with the page sending it back as
+bounded `history`, and the open story as the write target. The first was a chat that forgot; the
+second let a turn write into whichever world happened to be on screen. Both were replaced in the
+same release: the thread is a table, the client reads it back rather than supplying it, and the
+story a turn may write into is a parameter the writer sets. The claim that survives from this
+paragraph is the one about durability — the rows a turn wrote are the record, re-read through the
+ordinary bundle, cast-library, template and plan reads after every turn.
 
 **The receipt includes the cache consequence.** A model call never touches the narration payload
 (`includeTools` stays `false`), but what it *writes* does. Measured on a scratch story, one turn

@@ -15,7 +15,7 @@ const dir = mkdtempSync(join(tmpdir(), 'reepi-store-'));
 const { openDatabase, closeDatabase, getDb } = await import('../src/server/db.ts');
 const {
   stories, scenes, characters, cast, personas, lore, messages, memories, notes, threads,
-  ledger, prefixes, settings, warmups, templates, loadStoryBundle, resolvePersona,
+  ledger, prefixes, settings, warmups, templates, creator, loadStoryBundle, resolvePersona,
 } = await import('../src/server/store/index.ts');
 const { startChat, removeStoryPreservingCast } = await import('../src/server/chats.ts');
 const { recreateStoryBundle } = await import('../src/server/routes/library/bundle.ts');
@@ -406,6 +406,43 @@ const chatlessRemoval = removeStoryPreservingCast(elsewhere.id);
 check('deleting a story whose cards have no chats keeps the cards', chatlessRemoval.cards.map((card) => card.name).join(',') === 'Second');
 check('and those cards survive without a home', characters.get(second.id)?.homeStoryId === null);
 check('and their cast row in that story is gone', cast.listForStory(elsewhere.id).length === 0);
+
+/* --- library cards with no home, and the assistant's own thread --------------
+   Two things this store gained: a card can exist before any story does (the
+   assistant writes characters into a library that may not have a world yet), and
+   the assistant's conversation is app-scoped, with each assistant row carrying the
+   receipt of what that turn did. */
+const floating = characters.create(null, { name: 'Homeless', description: 'written before any world' });
+check('a card can be created with no home story', floating.homeStoryId === null);
+check('a card with no home joins no cast', cast.all().every((row) => row.characterId !== floating.id));
+check('a card with no home is still a library card', characters.list().some((card) => card.id === floating.id));
+check('a card with no home carries a token weight', floating.tokens > 0);
+
+const asked = creator.add({ role: 'user', body: 'write me a steward', allowOverwrite: true, targetStoryId: null });
+creator.add({
+  role: 'assistant',
+  body: 'Done.',
+  receipt: {
+    reply: 'Done.',
+    created: [{ kind: 'character', id: floating.id, name: 'Homeless', storyId: null, tokens: floating.tokens }],
+    updated: [],
+    replacedBlocks: [],
+    refused: [],
+    newStoryId: null,
+    costUsd: 0.0005,
+    model: 'deepseek-flash',
+  },
+  allowOverwrite: true,
+  targetStoryId: null,
+});
+const thread = creator.list();
+check('the assistant thread reads oldest first', thread[0]?.id === asked.id && thread[1]?.role === 'assistant');
+check('the assistant thread keeps the writer consent', thread[0]?.allowOverwrite === true);
+check('the assistant thread keeps the receipt', thread[1]?.receipt?.created[0]?.name === 'Homeless');
+check('the receipt survives as data, not a re-derivation', thread[1]?.receipt?.costUsd === 0.0005);
+check('the assistant thread is app-scoped', creator.count() === 2);
+creator.clear();
+check('a new chat clears the thread', creator.count() === 0);
 
 /* --- v1 -> v2 migration -----------------------------------------------------
    The rename is the one place this release touches data that already exists, so

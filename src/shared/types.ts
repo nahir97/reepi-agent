@@ -512,6 +512,79 @@ export type DirectorNote = {
   createdAt: number;
 };
 
+/* ------------------------------------------------- creation assistant */
+
+/**
+ * The assistant's conversation is app-scoped, not story-scoped: it is a studio
+ * object, and it is deliberately *not* a transcript. Nothing in `CreatorMessage`
+ * ever reaches the composer.
+ */
+export type CreatorRole = 'user' | 'assistant';
+
+/** A row the assistant wrote, named so the receipt can say what landed where. */
+export type CreatorCreated = {
+  /**
+   * `cast` is a membership, not a card: adopting an existing character into a
+   * story writes one `story_cast` row and re-prices everything the cast block
+   * carries. It is a creation, and it is reported like one.
+   */
+  kind: 'story' | 'character' | 'lore' | 'template' | 'cast';
+  id: string;
+  name: string;
+  /** Which world it landed in: null for a library card with no home, or a template. */
+  storyId: string | null;
+  /** Cards, casts and lore entries only — what this added to the frozen prefix. */
+  tokens?: number;
+};
+
+/** A row the assistant changed, and which fields moved. */
+export type CreatorUpdate = {
+  kind: 'character' | 'lore' | 'block';
+  name: string;
+  fields: string[];
+};
+
+/**
+ * What one assistant turn did — the receipt.
+ *
+ * The receipt is the point of the return type *and* the point of storing it: the
+ * writer has to be able to see everything that changed, everything that was
+ * refused, and which frozen blocks moved. A write that re-prices the cache prefix
+ * must never be invisible, and a receipt that only existed for one render would be.
+ */
+export type CreatorResult = {
+  /** A short summary of the turn. Not prose fiction, and never a tool transcript. */
+  reply: string;
+  created: CreatorCreated[];
+  updated: CreatorUpdate[];
+  /** Non-empty story blocks this turn replaced, so the prefix movement is named. */
+  replacedBlocks: EditableBlock[];
+  /** Targets left alone, each with the reason, in the writer's language. */
+  refused: { target: string; reason: string }[];
+  /** Set when the turn minted a story, so the page can offer to open it. */
+  newStoryId: string | null;
+  costUsd: number;
+  model: ModelId;
+};
+
+/**
+ * One message in the assistant's own conversation.
+ *
+ * A user row records the two things that governed the turn it opened — where it
+ * could write, and whether it could replace existing text — because a receipt read
+ * back a week later has to say what it was allowed to do, not just what it did.
+ */
+export type CreatorMessage = {
+  id: string;
+  role: CreatorRole;
+  body: string;
+  /** The turn's receipt on an assistant row; null on the writer's own row. */
+  receipt: CreatorResult | null;
+  allowOverwrite: boolean;
+  targetStoryId: string | null;
+  at: number;
+};
+
 /** Memory kinds, same contract as `NOTE_KINDS`. */
 export const MEMORY_KINDS = ['fact', 'relationship', 'promise', 'trait', 'place'] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];

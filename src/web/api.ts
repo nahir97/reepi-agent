@@ -14,7 +14,7 @@ import type {
   CastIndex,
   ConductorResult,
   CreatorRequest,
-  CreatorResult,
+  CreatorResponse,
   DiagnoseReport,
   DirectorResult,
   ExportFormat,
@@ -32,6 +32,7 @@ import type {
   Character,
   ChatRequest,
   CostEvent,
+  CreatorMessage,
   DirectorNote,
   LoreEntry,
   Memory,
@@ -423,12 +424,20 @@ export const api = {
   /* -------------------------------------------------- creation assistant */
 
   /**
-   * World-building. `storyId` is optional because templates are app-scoped and a
-   * turn may create a story; `allowOverwrite` is the writer's consent to replace a
-   * directive block that already has text.
+   * The assistant's own conversation, and one turn of it.
+   *
+   * `targetStoryId` is optional and explicit: null means the turn works with no
+   * world (library cards, templates, and stories it creates itself). A stopped turn
+   * answers `{ aborted: true }` with nothing recorded, so the page can drop it.
    */
-  creator: (body: CreatorRequest, signal?: AbortSignal) =>
-    send<CreatorResult>('/api/creator', json('POST', body, signal)),
+  creator: {
+    thread: (signal?: AbortSignal) =>
+      send<CreatorMessage[]>('/api/creator/messages', json('GET', undefined, signal)),
+    turn: (body: CreatorRequest, signal?: AbortSignal) =>
+      send<CreatorResponse>('/api/creator', json('POST', body, signal)),
+    newChat: (signal?: AbortSignal) =>
+      send<{ ok: true }>('/api/creator/messages', json('DELETE', undefined, signal)),
+  },
 
   /* ------------------------------------------------------------- insights */
 

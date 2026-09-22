@@ -10,6 +10,12 @@
  * A story reads as a conversation: a portrait, the title, and one line of what
  * it has cost and saved. The day headers file it the way a writer remembers it —
  * "which was I in last night" — rather than by title.
+ *
+ * The creation assistant sits above the list rather than inside it. It *is* a
+ * conversation — persisted, reloadable, with its own history — but it is not a
+ * story and never becomes one, so filing it among the stories would be a claim
+ * about it that is not true. One row, always in the same place, is how a writer
+ * learns it is always there.
  */
 
 import { useMemo, useState } from 'react';
@@ -21,7 +27,7 @@ import { MODELS } from '../../shared/types.ts';
 import { useStore } from '../store.ts';
 import { THEME_COVER as COVER } from '../theme.ts';
 import { StoryActions } from './StoryActions.tsx';
-import { IconClose, IconPlus, IconSearch } from './icons.tsx';
+import { IconClose, IconPlus, IconSearch, IconWand } from './icons.tsx';
 
 export function LibraryList({ onPick }: { onPick?: () => void }) {
   const stories = useStore((state) => state.stories);
@@ -29,6 +35,8 @@ export function LibraryList({ onPick }: { onPick?: () => void }) {
   const activeStoryId = useStore((state) => state.activeStoryId);
   const openStory = useStore((state) => state.openStory);
   const createStory = useStore((state) => state.createStory);
+  const page = useStore((state) => state.page);
+  const setPage = useStore((state) => state.setPage);
 
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
@@ -90,6 +98,43 @@ export function LibraryList({ onPick }: { onPick?: () => void }) {
           onCancel={() => setCreating(false)}
         />
       ) : null}
+
+      {/* --------------------------------------------------------- assistant */}
+
+      <div className="px-1.5 pt-2">
+        <div
+          className="flex items-center gap-2 rounded-md px-1.5 py-1.5"
+          style={{
+            background: page === 'creator' ? 'var(--accent-soft)' : 'transparent',
+            boxShadow: page === 'creator' ? 'inset 2px 0 0 var(--accent)' : undefined,
+          }}
+        >
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            aria-current={page === 'creator'}
+            onClick={() => {
+              setPage('creator');
+              onPick?.();
+            }}
+          >
+            <span
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border text-accent"
+              aria-hidden="true"
+            >
+              <IconWand size={15} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-display text-[13px] leading-tight font-semibold">
+                Creation assistant
+              </span>
+              <span className="mt-0.5 block truncate text-[10px] text-faint">
+                an agent that builds characters, lore and worlds
+              </span>
+            </span>
+          </button>
+        </div>
+      </div>
 
       {/* ------------------------------------------------------------- search */}
 

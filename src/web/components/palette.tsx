@@ -87,7 +87,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       {
         id: 'creator',
         label: 'Creation assistant',
-        hint: 'ask an agent to write characters, lore, worlds and templates',
+        hint: 'its own chat — ask it to write characters, lore, worlds and templates',
         group: 'Go',
         run: () => {
           setPage('creator');

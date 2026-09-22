@@ -15,6 +15,14 @@ export let toastSeq = 0;
 export let streamSeq = 0;
 export let planTimer: number | undefined;
 export let activeController: AbortController | null = null;
+/**
+ * The assistant's own in-flight call.
+ *
+ * A second slot rather than a reuse of `activeController`: a narration turn in one
+ * story and an assistant turn are independent, and stopping one must never cancel
+ * the other.
+ */
+export let creatorController: AbortController | null = null;
 
 export function bumpToastSeq(): number {
   toastSeq += 1;
@@ -46,4 +54,13 @@ export function setActiveController(controller: AbortController | null): void {
 export function abortActive(): void {
   activeController?.abort();
   activeController = null;
+}
+
+export function setCreatorController(controller: AbortController | null): void {
+  creatorController = controller;
+}
+
+export function abortCreator(): void {
+  creatorController?.abort();
+  creatorController = null;
 }

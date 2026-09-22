@@ -187,7 +187,7 @@ export function App() {
 
       {/* -------------------------------------------------------- onboarding */}
 
-      {booted && !bundle && !loading ? <FirstRun /> : null}
+      {booted && !bundle && !loading && page !== 'creator' ? <FirstRun /> : null}
 
       {!booted ? (
         <div className="fixed inset-0 z-[95] flex items-center justify-center" style={{ background: 'var(--bg)' }}>
@@ -217,6 +217,7 @@ function FirstRun() {
   const createStory = useStore((state) => state.createStory);
   const stories = useStore((state) => state.stories);
   const openStory = useStore((state) => state.openStory);
+  const setPage = useStore((state) => state.setPage);
 
   return (
     <div className="texture-paper fixed inset-0 z-[50] overflow-y-auto lg:static lg:z-auto">
@@ -255,6 +256,12 @@ function FirstRun() {
           <button type="button" className="btn" onClick={() => openDialog({ kind: 'new-story' })}>
             <IconPlus size={13} />
             Name it myself
+          </button>
+          {/* The assistant is the one surface that works with nothing to open, so
+              it is offered where a writer with no story actually stands. */}
+          <button type="button" className="btn" onClick={() => setPage('creator')}>
+            <IconFeather size={13} />
+            Describe it to the assistant
           </button>
           <button type="button" className="btn" onClick={() => openDialog({ kind: 'import-export' })}>
             Import a card or bundle

@@ -1,96 +1,135 @@
 /**
- * The creation assistant, from the page's side.
+ * The creation assistant's conversation, from the page's side.
  *
- * The turn is a single request: the pass runs its own tool loop server-side and
- * answers with a receipt. Nothing here reimplements any part of that — the slice's
- * whole job is to send the ask, hold the receipt for display, and then **re-read
- * everything the turn could have moved** rather than trusting the receipt's word
- * for it. The receipt says what the assistant intended; the bundle, the cast
- * library, the templates and the payload plan are what actually happened.
+ * The thread is the server's, not the page's: it is read back on entry and after a
+ * turn, so a reload lands the writer in the same conversation with the same
+ * receipts. What the page holds is only what has not been recorded yet — the ask
+ * in flight, painted as a bubble so the surface feels like a chat rather than a
+ * form that locks for thirty seconds.
  *
- * The log is session-only and in memory. `history` is sent back with each request
- * so a follow-up can say "the second one", but the durable record of a turn is the
- * rows it wrote — which is why a reload loses the conversation and keeps the world.
+ * Two things are deliberately explicit here rather than inferred:
+ *
+ * - **The target story.** It is state the writer sets (or that a just-created story
+ *   sets for them), never "whatever story happens to be open". A turn can write
+ *   into a world the writer was not looking at only if they pointed it there.
+ * - **Stopping.** A stopped turn records nothing and writes nothing, so the page
+ *   drops the pending bubble and keeps the writer's text: the sentence they typed
+ *   is the one thing an abort must not cost them.
  */
 
 import { api, describeError } from '../../api.ts';
 import { IDLE_CREATOR } from '../initial.ts';
-import { nowId } from './helpers.ts';
+import { abortCreator, setCreatorController } from '../runtime.ts';
+import type { CreatorMessage } from '../../../shared/types.ts';
 import type { Slice } from '../slice.ts';
 import type { Store } from '../types.ts';
-import type { CreatorTurn } from '../types.ts';
 
-export function creatorSlice({ get, set }: Slice): Pick<Store, 'runCreator' | 'clearCreatorLog'> {
-  const logWith = (turn: CreatorTurn) => [...get().creator.log, turn];
+export function creatorSlice({ get, set }: Slice): Pick<
+  Store,
+  'loadCreatorThread' | 'sendCreator' | 'stopCreator' | 'startNewCreatorChat' | 'setCreatorTarget'
+> {
+  /** Append what the server recorded, ignoring a duplicate read. */
+  const append = (incoming: CreatorMessage[]): void => {
+    const known = new Set(get().creator.thread.map((message) => message.id));
+    const fresh = incoming.filter((message) => !known.has(message.id));
+    if (fresh.length > 0) set({ creator: { ...get().creator, thread: [...get().creator.thread, ...fresh] } });
+  };
 
   return {
-    runCreator: async ({ text, allowOverwrite }) => {
-      const request = text.trim();
-      if (!request || get().creator.busy) return;
-
-      const storyId = get().activeStoryId;
-      /* The page's own text, oldest first. Bounded on the server, never trusted
-         here — it can influence the side-channel prompt and nothing else. */
-      const history = get()
-        .creator.log.flatMap((turn) => [
-          { role: 'user' as const, content: turn.request },
-          ...(turn.reply ? [{ role: 'assistant' as const, content: turn.reply }] : []),
-        ]);
-
-      set({ creator: { ...get().creator, busy: true, error: null } });
+    loadCreatorThread: async () => {
       try {
-        const result = await api.creator({
-          request,
-          storyId,
-          allowOverwrite,
-          ...(history.length > 0 ? { history } : {}),
-        });
+        const thread = await api.creator.thread();
+        set({ creator: { ...get().creator, thread, loaded: true, error: null } });
+      } catch (error) {
+        /* The page shows the failure beside a retry; the rest of the studio does
+           not depend on the thread, so this must not toast on every boot. */
+        set({ creator: { ...get().creator, loaded: true, error: describeError(error) } });
+      }
+    },
 
-        set({
-          creator: {
-            log: logWith({
-              id: nowId(),
-              request,
-              reply: result.reply,
-              created: result.created,
-              updated: result.updated,
-              replacedBlocks: result.replacedBlocks,
-              refused: result.refused,
-              newStoryId: result.newStoryId,
-              costUsd: result.costUsd,
-              allowOverwrite,
-              at: Date.now(),
-            }),
-            busy: false,
-            error: null,
+    sendCreator: async ({ text, allowOverwrite }) => {
+      const request = text.trim();
+      const { creator } = get();
+      if (!request || creator.pending !== null) return;
+
+      /* The target is captured *now*: a turn must write where it said it would,
+         even if the writer changes the picker while it runs. */
+      const targetStoryId = creator.targetStoryId;
+      const controller = new AbortController();
+      setCreatorController(controller);
+      set({ creator: { ...creator, pending: request, error: null } });
+
+      try {
+        const response = await api.creator.turn(
+          {
+            request,
+            targetStoryId,
+            allowOverwrite,
           },
-        });
+          controller.signal,
+        );
 
-        /* Re-read what the turn could have touched. A new story lands in the
-           library rail; a template in the template dialog; a card in the cast
-           library; a block in the bundle and therefore in the payload plan. */
+        if (response.aborted || !response.turn) {
+          /* Stopped: nothing recorded, nothing written. Drop the bubble. */
+          set({ creator: { ...get().creator, pending: null } });
+          return;
+        }
+
+        const { request: asked, reply } = response.turn;
+        set({ creator: { ...get().creator, pending: null } });
+        append([asked, reply]);
+
+        /* A turn that minted a story becomes the target for the next one: the
+           writer just asked for that world, so the obvious follow-up is to keep
+           building it. Anything else they say re-points it with the picker. */
+        if (reply.targetStoryId && reply.targetStoryId !== get().creator.targetStoryId) {
+          set({ creator: { ...get().creator, targetStoryId: reply.targetStoryId } });
+        }
+
+        /* Re-read what the turn could have touched. The plan belongs to the *open*
+           story, so it is refreshed only when the open story is the one written to. */
         await get().loadStories().catch(() => undefined);
-        await get().refreshBundle({ quiet: true });
         await get().refreshCastLibrary();
         await get().loadTemplates();
-
-        /* The plan belongs to the *open* story. A turn that minted a story has not
-           opened it, and computing a plan for it here would replace the one the
-           writer is looking at with a story they are not in. */
-        if (!result.newStoryId && get().activeStoryId) {
+        const open = get().activeStoryId;
+        if (open && (!reply.targetStoryId || reply.targetStoryId === open)) {
+          await get().refreshBundle({ quiet: true });
           void get().refreshPlan({
-            storyId: get().activeStoryId as string,
+            storyId: open,
             sceneId: get().activeScene()?.id ?? '',
             mode: 'continue',
           });
         }
         void get().refreshInsights();
       } catch (error) {
-        set({ creator: { ...get().creator, busy: false, error: describeError(error) } });
+        if (controller.signal.aborted) {
+          set({ creator: { ...get().creator, pending: null } });
+          return;
+        }
+        set({ creator: { ...get().creator, pending: null, error: describeError(error) } });
         get().fail(error, 'The creation assistant failed');
+      } finally {
+        setCreatorController(null);
       }
     },
 
-    clearCreatorLog: () => set({ creator: { ...IDLE_CREATOR } }),
+    stopCreator: () => {
+      abortCreator();
+      set({ creator: { ...get().creator, pending: null } });
+    },
+
+    startNewCreatorChat: async () => {
+      if (get().creator.pending !== null) abortCreator();
+      try {
+        await api.creator.newChat();
+        /* A new chat keeps nothing of the old one — including its target, which
+           was a statement about the conversation that just ended. */
+        set({ creator: { ...IDLE_CREATOR, loaded: true } });
+      } catch (error) {
+        get().fail(error, 'Could not start a new chat');
+      }
+    },
+
+    setCreatorTarget: (storyId) => set({ creator: { ...get().creator, targetStoryId: storyId } }),
   };
 }

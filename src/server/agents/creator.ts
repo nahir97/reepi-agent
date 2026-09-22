@@ -42,13 +42,15 @@ import { MACROS } from '../../shared/macros.ts';
 import type {
   Character,
   CostEventKind,
+  CreatorCreated,
+  CreatorResult,
+  CreatorUpdate,
   EditableBlock,
   LoreEntry,
   ModelId,
   ReasoningEffort,
   Story,
 } from '../../shared/types.ts';
-import type { CreatorCreated, CreatorRequest, CreatorResult, CreatorUpdate } from '../../shared/api.ts';
 import { completeChat, type WireMessage, type WireTool } from '../deepseek.ts';
 import { cast as castDao, castOf, characters, lore, stories, templates } from '../store/index.ts';
 import { BUILTIN_TEMPLATES } from '../templates.ts';
@@ -85,6 +87,8 @@ export const CREATOR_LIMITS = {
 export const CREATOR_SYSTEM = `You are the creation assistant inside Reepi, a writing studio for roleplay and long-form fiction.
 
 Your job is to build world material on request: characters, lorebook entries, the story's directive blocks (scenario, story bible, genre, style, exemplars, contract, instruction), reusable prompt templates, and occasionally a whole new story. The writer keeps the prose; you supply the scaffolding it is written from.
+
+A conversation may have no story selected. That is normal: write the characters anyway — they become library cards the writer can cast into any world later — and say so. Stories, lorebook entries and directive blocks need a world, so call create_story first when there is none.
 
 Rules:
 - Never write fiction. No scene prose, no dialogue, no narration. You produce descriptions, facts, lore and directives.
@@ -130,7 +134,7 @@ export const CREATOR_TOOLS: WireTool[] = [
     function: {
       name: 'create_character',
       description:
-        'Write a new character card and cast it in this story. Cards are library objects: this one is authored by, and cast in, the target story. Write fields a narrator could act on — behaviour and voice, not vibes.',
+        'Write a new character card. With a story selected it is authored by and cast in that story; with no story selected it becomes a library card with no home, which any story can adopt later. Write fields a narrator could act on — behaviour and voice, not vibes.',
       parameters: {
         type: 'object',
         properties: {
@@ -152,7 +156,7 @@ export const CREATOR_TOOLS: WireTool[] = [
     function: {
       name: 'update_character',
       description:
-        'Revise a character already cast in this story. Match by their exact current name; only the fields you name are changed.',
+        'Revise a character: one cast in the selected story, or one in the writer\'s library. Match by their exact current name; only the fields you name are changed.',
       parameters: {
         type: 'object',
         properties: {
@@ -175,7 +179,7 @@ export const CREATOR_TOOLS: WireTool[] = [
     function: {
       name: 'cast_character',
       description:
-        'Bring a character that already exists in the library into this story’s cast, without rewriting them. Use this instead of create_character when the brief lists someone who fits.',
+        'Bring a character that already exists in the library into the selected story’s cast, without rewriting them. Use this instead of create_character when the brief lists someone who fits. Requires a selected story.',
       parameters: {
         type: 'object',
         properties: { name: { type: 'string', description: 'Their exact name in the library.' } },
@@ -392,11 +396,16 @@ export function applyCreatorTool(
     return `story staged: ${title}`;
   }
 
-  /* Everything below needs somewhere to land. A story created in this same turn
-     counts — that is what makes "start a story and cast it" one request. */
+  /* Not every tool needs a world. This chat is app-scoped, so a turn with no story
+     selected can still write characters (they become library cards with no home),
+     templates, and a story to put the rest in. A story created in this same turn
+     counts as a world for every tool below — that is what makes "start a story
+     and cast it" one request. */
   const storyPending = count('story') > 0;
-  if (state.story === null && !storyPending) {
-    return refuse(name, 'no story is open — create one with create_story first, or open a story');
+  const hasWorld = state.story !== null || storyPending;
+  const needsWorld: CreatorDraft['kind'][] = ['cast-character'];
+  if (!hasWorld && (needsWorld.includes(name as CreatorDraft['kind']) || name === 'create_lore_entry' || name === 'update_lore_entry' || name === 'set_story_block')) {
+    return refuse(name, 'no story is selected for this chat — pick one, or have create_story make one first');
   }
 
   /* A chat's cast is its `character_id`, by construction — one borrowed card. A
@@ -406,6 +415,11 @@ export function applyCreatorTool(
   if (state.story?.characterId && (name === 'create_character' || name === 'cast_character')) {
     return refuse(name, 'this is a 1:1 chat, which has exactly one character — edit that card, or start a chat from another one');
   }
+
+  /* Which names this turn must not duplicate. Writing into a new or unselected
+     world means the library is the namespace; writing into a story means its own
+     cast is, because the same name in another world is a different person. */
+  const duplicateScope = storyPending || state.story === null ? state.libraryByName : state.castByName;
 
   if (name === 'create_character') {
     const card = fieldsOf<Character>(args, {
@@ -427,11 +441,21 @@ export function applyCreatorTool(
     }
     if (objectCount() >= CREATOR_LIMITS.objects) return refuse(cardName, 'this turn is at its object limit');
     const key = cardName.toLowerCase();
-    if (state.castByName.has(key)) {
-      return refuse(cardName, `a character named ${cardName} is already cast in this story — use update_character`);
+    if (duplicateScope.has(key)) {
+      return refuse(
+        cardName,
+        duplicateScope === state.castByName
+          ? `a character named ${cardName} is already cast in this story — use update_character`
+          : `a character named ${cardName} is already in the library — use cast_character to bring them into a story, or update_character to revise them`,
+      );
     }
     sink.drafts.push({ kind: 'character', fields: card });
+    /* Both maps remember the staged name, so a second call in the same turn is
+       refused whichever scope this turn is writing in. */
     state.castByName.set(key, { name: cardName } as Character);
+    const shelf = state.libraryByName.get(key);
+    if (shelf) shelf.push({ name: cardName } as Character);
+    else state.libraryByName.set(key, [{ name: cardName } as Character]);
     return `character staged: ${cardName}`;
   }
 
@@ -458,8 +482,16 @@ export function applyCreatorTool(
       Object.assign(staged.fields, fields);
       return `character revised in this turn: ${wanted}`;
     }
-    if (!state.castByName.has(match)) {
-      return refuse(wanted, `no character named ${wanted} is cast in this story`);
+    /* A card cast in this story, or one sitting in the library: both are the
+       writer's material, and an app-scoped chat may revise either. Two library
+       cards sharing the name is the one case that has to be refused. */
+    const inCast = state.castByName.has(match);
+    const inLibrary = state.libraryByName.get(match) ?? [];
+    if (!inCast && inLibrary.length === 0) {
+      return refuse(wanted, `no character named ${wanted} exists in this chat's world or your library`);
+    }
+    if (!inCast && inLibrary.length > 1) {
+      return refuse(wanted, `${inLibrary.length} characters are named ${wanted}; the writer must pick one by hand`);
     }
     sink.drafts.push({ kind: 'update-character', match, fields });
     return `character staged for revision: ${wanted}`;
@@ -630,10 +662,12 @@ export function applyCreatorDrafts(
       created.push({ kind: 'story', id: bundle.story.id, name: bundle.story.title, storyId: bundle.story.id });
     }
 
-    /* Creates first. */
+    /* Creates first. A character draft is the one create that does not need a
+       story: with no target it lands as a library card with no home, which is how
+       the assistant is useful before any world exists. */
     const characterIds = new Map<string, string>();
     for (const draft of drafts) {
-      if (draft.kind !== 'character' || !storyId) continue;
+      if (draft.kind !== 'character') continue;
       const card = characters.create(storyId, draft.fields);
       characterIds.set(card.name.toLowerCase(), card.id);
       created.push({ kind: 'character', id: card.id, name: card.name, storyId, tokens: card.tokens });
@@ -650,7 +684,7 @@ export function applyCreatorDrafts(
     /* Revisions, adoptions and templates. */
     for (const draft of drafts) {
       if (draft.kind === 'update-character') {
-        const id = characterIds.get(draft.match) ?? castIdByName(storyId, draft.match);
+        const id = characterIds.get(draft.match) ?? characterIdByName(storyId, draft.match);
         if (!id) continue;
         const card = characters.update(id, draft.fields);
         if (card) updated.push({ kind: 'character', name: card.name, fields: Object.keys(draft.fields) });
@@ -694,12 +728,25 @@ export function applyCreatorDrafts(
   });
 }
 
-/** The id of a card cast in this story, matched by name. Read inside the task. */
-function castIdByName(storyId: string | null, name: string): string | undefined {
-  if (!storyId) return undefined;
-  const story = stories.get(storyId);
-  if (!story) return undefined;
-  return castOf(story).find((card) => card.name.toLowerCase() === name)?.id;
+/**
+ * The id of the card a revision is about, matched by name. Read inside the task.
+ *
+ * Cast first, then the library: an app-scoped chat may revise a card that no story
+ * has adopted yet, and a card the *target* story casts must always win over a
+ * same-named card elsewhere. An ambiguous library name resolves to nothing — the
+ * dispatcher refused that case before staging, and silently picking one of two
+ * cards a writer cannot tell apart would be worse than doing nothing.
+ */
+function characterIdByName(storyId: string | null, name: string): string | undefined {
+  if (storyId) {
+    const story = stories.get(storyId);
+    if (story) {
+      const inCast = castOf(story).find((card) => card.name.toLowerCase() === name);
+      if (inCast) return inCast.id;
+    }
+  }
+  const matches = characters.list().filter((card) => card.name.toLowerCase() === name);
+  return matches.length === 1 ? matches[0]?.id : undefined;
 }
 
 /** The id of a lore entry in this story, matched by title. Read inside the task. */
@@ -716,13 +763,18 @@ function libraryCardByName(name: string): Character | null {
 
 /* ------------------------------------------------------------------ context */
 
+/** One earlier exchange, as the pass reads it back from the stored thread. */
+export type CreatorHistory = { role: 'user' | 'assistant'; content: string }[];
+
 /**
- * The history a page sent back, bounded. Untrusted by construction: it goes into
- * one side-channel request and can never reach the narrator's payload.
+ * The conversation the pass is shown, bounded.
+ *
+ * Read back from the assistant's own table rather than sent by the page: the
+ * stored thread is the truth about what was said, and it is the only version that
+ * survives a reload. It is still bounded here, because a long conversation must
+ * not become an unbounded prompt.
  */
-export function normaliseHistory(
-  raw: CreatorRequest['history'],
-): { role: 'user' | 'assistant'; content: string }[] {
+export function normaliseHistory(raw: CreatorHistory | undefined): CreatorHistory {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter(
@@ -739,7 +791,11 @@ export function renderCreatorBrief(state: CreatorState, request: string): string
   const story = state.story;
   const lines: string[] = [];
 
-  lines.push(story ? `The writer has this story open: ${story.title}` : 'No story is open.');
+  lines.push(
+    story
+      ? `This chat is writing into: ${story.title}`
+      : 'No story is selected for this chat. Characters you write become library cards with no home story; stories, lore entries and directive blocks need a world, so create one first if the writer asked for them.',
+  );
 
   if (story) {
     const blocks = EDITABLE_BLOCKS.map((block) => {
@@ -879,7 +935,7 @@ export function creatorState(story: Story | null, allowOverwrite: boolean): Crea
 export async function runCreator(
   targetStoryId: string | null,
   request: string,
-  history: CreatorRequest['history'] = [],
+  history: CreatorHistory = [],
   options: CreatorOptions = {},
 ): Promise<CreatorResult> {
   const story = targetStoryId ? stories.get(targetStoryId) : null;

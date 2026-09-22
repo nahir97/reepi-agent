@@ -38,7 +38,7 @@ export function StudioNav({ onNavigate, compact = false }: { onNavigate?: () => 
        earlier distance: not a roster you fill in, but the thing that fills one. */
     {
       label: 'Creation assistant',
-      hint: 'an agent that writes characters, lore, worlds and templates',
+      hint: 'its own chat — builds characters, lore, worlds and templates',
       icon: IconWand,
       run: () => setPage('creator'),
     },

@@ -30,11 +30,17 @@ export const IDLE_STREAM: StreamingState = {
 /**
  * The creation assistant's rest state.
  *
- * Also its reset value, for the same reason `IDLE_STREAM` is: the log is a page's
- * memory and "clear" has to mean empty, not "empty except for the turns nobody
- * cleared". The log array is only ever replaced, never appended to in place.
+ * Also its reset value: a new chat has to mean empty, not "empty except for the
+ * turns nobody cleared". `targetStoryId` resets to null too — a fresh chat starts
+ * with no world selected, which is the honest default and the safe one.
  */
-export const IDLE_CREATOR: CreatorState = { log: [], busy: false, error: null };
+export const IDLE_CREATOR: CreatorState = {
+  thread: [],
+  loaded: false,
+  pending: null,
+  targetStoryId: null,
+  error: null,
+};
 
 /**
  * Where the rail's open state is remembered, and how it is read back.
@@ -80,8 +86,11 @@ export function initialState(): Omit<
   | 'switchScene'
   | 'updateScene'
   | 'archiveScene'
-  | 'runCreator'
-  | 'clearCreatorLog'
+  | 'loadCreatorThread'
+  | 'sendCreator'
+  | 'stopCreator'
+  | 'startNewCreatorChat'
+  | 'setCreatorTarget'
   | 'createCard'
   | 'startChatWith'
   | 'loadCastLibrary'
@@ -123,8 +132,7 @@ export function initialState(): Omit<
   return {
     promptTemplates: [],
     macros: [],
-    /* A page's log, not the studio's memory: a reload loses the conversation and
-       keeps everything the conversation wrote. */
+    /* The assistant's own conversation, read back from the server. */
     creator: { ...IDLE_CREATOR },
     stories: [],
     storyStats: {},

@@ -12,6 +12,7 @@ import type {
   Character,
   CostEvent,
   CostEventKind,
+  CreatorMessage,
   DirectorNote,
   EditableBlock,
   LoreEntry,
@@ -153,25 +154,25 @@ export type DirectorResult = {
 /**
  * One request to the creation assistant.
  *
- * `storyId` is the *intended* target, and it is optional: prompt templates are
- * app-scoped, so a writer with no story open can still ask for one. Every tool
- * that needs a world (characters, lore, blocks) refuses with a readable reason
- * when there is neither an open story nor a story drafted in the same request.
+ * `targetStoryId` is the story the turn may write into, and it is explicit and
+ * optional: null means "no world", which is a legitimate way to work — characters
+ * become library cards with no home story, templates are app-scoped, and a whole
+ * story can be created by the turn itself. It is a parameter of the *request*
+ * rather than an ambient "whatever story is open" precisely so a turn can never
+ * write into a world the writer was not looking at.
  *
  * `allowOverwrite` is the only way the assistant may replace a block that already
  * has text. It is a per-request flag rather than a prompt instruction because the
  * rule has to hold when the model ignores the prompt — and because the writer's
  * authored prose is the one thing here a bad generation could destroy.
  *
- * `history` is the in-session log the page sends back so a follow-up ("make the
- * second one older") has something to refer to. It is untrusted, bounded on the
- * server, and never reaches the narration payload.
+ * The conversation itself is not sent with the request: the server reads it back
+ * from its own table, so the only untrusted input is the ask.
  */
 export type CreatorRequest = {
   request: string;
-  storyId?: string | null;
+  targetStoryId?: string | null;
   allowOverwrite?: boolean;
-  history?: { role: 'user' | 'assistant'; content: string }[];
   model?: ModelId;
   effort?: CreatorEffort;
 };
@@ -179,48 +180,22 @@ export type CreatorRequest = {
 /** Thinking is deliberately limited: this pass writes structure, not prose. */
 export type CreatorEffort = 'none' | 'minimal' | 'low';
 
-/** A row the assistant wrote, named so the receipt can say what landed where. */
-export type CreatorCreated = {
-  /**
-   * `cast` is a membership, not a card: adopting an existing character into the
-   * story writes one `story_cast` row and re-prices everything the cast block
-   * carries. It is a creation, and it is reported like one.
-   */
-  kind: 'story' | 'character' | 'lore' | 'template' | 'cast';
-  id: string;
-  name: string;
-  /** Which world it landed in: null for an app-scoped template. */
-  storyId: string | null;
-  /** Cards, casts and lore entries only — what this added to the frozen prefix. */
-  tokens?: number;
-};
-
-/** A row the assistant changed, and which fields moved. */
-export type CreatorUpdate = {
-  kind: 'character' | 'lore' | 'block';
-  name: string;
-  fields: string[];
+/** One turn of the conversation: the writer's ask, and the assistant's answer. */
+export type CreatorTurn = {
+  request: CreatorMessage;
+  reply: CreatorMessage;
 };
 
 /**
- * What one assistant turn did. The receipt is the point of the return type: the
- * writer has to be able to see everything that changed, everything that was
- * refused, and which frozen blocks moved — a write that re-prices the cache prefix
- * must never be invisible.
+ * The answer to a turn.
+ *
+ * A stopped turn is a success — the writer asked for it, nothing was written, and
+ * nothing was recorded — so it is a 200 with `aborted: true` rather than an error
+ * the page would have to explain.
  */
-export type CreatorResult = {
-  /** A short summary of the turn. Not prose fiction, and never a tool transcript. */
-  reply: string;
-  created: CreatorCreated[];
-  updated: CreatorUpdate[];
-  /** Non-empty story blocks this turn replaced, so the prefix movement is named. */
-  replacedBlocks: EditableBlock[];
-  /** Targets left alone, each with the reason, in the writer's language. */
-  refused: { target: string; reason: string }[];
-  /** Set when the turn minted a story, so the page can offer to open it. */
-  newStoryId: string | null;
-  costUsd: number;
-  model: ModelId;
+export type CreatorResponse = {
+  aborted: boolean;
+  turn: CreatorTurn | null;
 };
 
 export type ArchivistResult = {

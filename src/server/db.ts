@@ -268,6 +268,34 @@ CREATE TABLE IF NOT EXISTS warmups (
   tokens       INTEGER NOT NULL DEFAULT 0,
   cost_usd     REAL NOT NULL DEFAULT 0
 );
+
+/*
+ * The creation assistant's own conversation.
+ *
+ * App-scoped on purpose: the assistant is not a story, so its thread must never
+ * be mistaken for a narration transcript — it carries no story id of its own, no
+ * scene, no variants, and nothing in this table is ever read by the composer.
+ *
+ * One row per message. An assistant row carries its whole receipt as JSON, so the
+ * page renders what a turn did from the record rather than re-deriving it, and a
+ * writer who reloads sees the same receipt they saw when it happened. The
+ * timestamp alone is not a safe order — a turn's two rows can share a millisecond
+ * — so the reader orders by created_at and then rowid.
+ *
+ * The target story is deliberately not a foreign key. A receipt is a record of
+ * what happened at a moment: deleting the story it names must not silently
+ * rewrite the conversation that described it.
+ */
+CREATE TABLE IF NOT EXISTS creator_messages (
+  id               TEXT PRIMARY KEY,
+  role             TEXT NOT NULL,
+  body             TEXT NOT NULL DEFAULT '',
+  receipt          TEXT,
+  allow_overwrite  INTEGER NOT NULL DEFAULT 0,
+  target_story_id  TEXT,
+  created_at       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS creator_messages_time ON creator_messages(created_at);
 `;
 
 let db: DatabaseSync | null = null;
