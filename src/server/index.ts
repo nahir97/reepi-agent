@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { serve } from '@hono/node-server';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDb, openDatabase } from './db.ts';
 import { personas, scenes } from './store/index.ts';
@@ -151,6 +152,36 @@ function repairStories(): void {
 
 repairStories();
 
+/**
+ * Is the static UI this port serves older than the source it was built from?
+ *
+ * `npm run dev` starts *this* server, which also serves `dist/` — so opening :8787
+ * during development shows whatever was last built, not what is in `src/`. That is
+ * a silent trap: the app works, and the feature you just wrote is simply not there.
+ * `npm run dev:web` is the live UI, and nothing said so.
+ *
+ * One walk of `src/` at boot, and the answer is a line in the terminal instead of
+ * half an hour of looking for a surface that exists.
+ */
+function uiBuildStatus(): 'missing' | 'stale' | 'fresh' {
+  const index = join(DIST, 'index.html');
+  if (!existsSync(index)) return 'missing';
+  try {
+    const root = join(import.meta.dirname, '../..');
+    let newest = statSync(join(root, 'index.html')).mtimeMs;
+    for (const relative of readdirSync(join(root, 'src'), { recursive: true })) {
+      const file = join(root, 'src', String(relative));
+      if (statSync(file).isFile()) newest = Math.max(newest, statSync(file).mtimeMs);
+    }
+    return newest > statSync(index).mtimeMs ? 'stale' : 'fresh';
+  } catch {
+    /* Best effort by construction: a deployment that ships `dist/` without `src/`
+       (or a file that vanishes mid-walk) must not turn a diagnostic into a boot
+       failure. No source to compare means no claim to make. */
+    return 'fresh';
+  }
+}
+
 serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
   console.log(`[reepi] api      http://${HOST}:${info.port}`);
   console.log(`[reepi] database ${DB_PATH}`);
@@ -161,6 +192,18 @@ serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
         : 'off-peak (half price)'
     }`,
   );
+  /* Said out loud because the failure is silent: the UI loads, and the thing you
+     just wrote is missing from it. */
+  const ui = uiBuildStatus();
+  if (ui === 'missing') {
+    console.warn(
+      `[reepi] no UI build at ${DIST} — this port serves the API only. Run \`npm run build\`, or use \`npm run dev:web\` for the live UI on :5273.`,
+    );
+  } else if (ui === 'stale') {
+    console.warn(
+      '[reepi] dist/ is OLDER than src/ — this port is serving a stale UI. Run `npm run build`, or use `npm run dev:web` for the live UI on :5273.',
+    );
+  }
   if (!process.env.DEEPSEEK_API_KEY) {
     console.warn('[reepi] DEEPSEEK_API_KEY is not set — chat requests will fail.');
   }

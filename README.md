@@ -285,19 +285,26 @@ director's notebook.
 
 ## Running it
 
+Development is two processes, in two terminals:
+
 ```bash
 npm install
 cp .env.example .env        # add your DEEPSEEK_API_KEY
-npm run dev                 # API on :8787, UI on :5273
+npm run dev                 # the API on :8787 (it also serves the last build, if any)
+npm run dev:web             # the live UI on :5273, proxying /api to :8787
 ```
 
-Production:
+Open <http://127.0.0.1:5273>. That is the UI with hot reload; `:8787` is the API,
+and it serves whatever `dist/` last held — which is why the server warns at boot
+when `dist/` is older than `src/`.
+
+Production is one process:
 
 ```bash
-npm run serve               # builds the SPA and serves it from the API
+npm run serve               # builds the SPA, then serves it from the API on :8787
 ```
 
-Open <http://127.0.0.1:5273> in development, or `:8787` after `npm run serve`.
+Or build once and serve the build without rebuilding: `npm run build && npm start`.
 
 `npm run typecheck` runs `tsc --noEmit`.
 

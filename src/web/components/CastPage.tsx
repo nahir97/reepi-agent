@@ -53,7 +53,7 @@ import type { Character, Persona, Story } from '../../shared/types.ts';
 import { useStore, type CardKind } from '../store.ts';
 import { Avatar } from './Avatar.tsx';
 import { PageBand } from './panel.tsx';
-import { IconPen, IconPlus, IconSearch, IconUser, IconUsers } from './icons.tsx';
+import { IconPen, IconPlus, IconSearch, IconUser, IconUsers, IconWand } from './icons.tsx';
 
 /* ------------------------------------------------------------------- model */
 
@@ -169,6 +169,7 @@ export function CastPage() {
   const removeFromCast = useStore((state) => state.removeFromCast);
   const loadCastLibrary = useStore((state) => state.loadCastLibrary);
   const openDialog = useStore((state) => state.openDialog);
+  const setCreatorTarget = useStore((state) => state.setCreatorTarget);
 
   /* Opened from a story, the payload roster is the one that matters; opened from
      the palette with no story, the library is all there is. */
@@ -310,6 +311,25 @@ export function CastPage() {
         }
         actions={
           <>
+            {/* The way to the assistant from where a writer looks for people. It
+                *points the chat at this story* as it opens it, which is the one
+                automatic target change the design allows: the writer pressed a
+                button that says where it will write. */}
+            {canCast ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ padding: '0.35rem 0.6rem' }}
+                onClick={() => {
+                  setCreatorTarget(storyId);
+                  setPage('creator');
+                }}
+                title={`Ask the creation assistant to write characters, lore or a world — it will write into ${bundle?.story.title ?? 'this story'}`}
+              >
+                <IconWand size={12} />
+                Assistant
+              </button>
+            ) : null}
             {/* A persona is the writer's mask for a story, so it is created where
                 it will be sent — never from the library scope. */}
             {scope === 'story' ? (
@@ -445,12 +465,12 @@ export function CastPage() {
                 ) : castLibrary === null ? (
                   'Reading your character library…'
                 ) : (
-                  'No characters yet. Open a story to write one.'
+                  'No characters yet. Ask the creation assistant for some, or open a story and write one.'
                 )
               ) : isChat && storyCharacters.length === 0 ? (
                 'The card this chat was started from is gone, so there is nothing to show here. The conversation is still yours.'
               ) : roster.length === 0 ? (
-                'No one in this story yet. Add a character, or write a persona for yourself — both sit at the front of every request.'
+                'No one in this story yet. Add a character, write a persona for yourself, or ask the assistant to write one — cards and personas sit at the front of every request.'
               ) : (
                 `Nothing matches ${query.trim() ? `“${query.trim()}”` : 'that filter'}.`
               )}
