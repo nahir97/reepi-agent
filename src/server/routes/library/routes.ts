@@ -16,8 +16,9 @@ import type {
   Character, DirectorNote, LoreEntry, Message, MessageOrigin, MessageUsage, ModelId, Persona,
   ReasoningEffort, Role, Scene, SceneStateField, Story, Theme, Thread,
 } from '../../../shared/types.ts';
-import type { StoryBundle, VariantBody } from '../../../shared/api.ts';
+import type { CastAttachBody, CastIndex, StartChatBody, StoryBundle, VariantBody } from '../../../shared/api.ts';
 import {
+  cast,
   castOf,
   characters,
   loadStoryBundle,
@@ -32,7 +33,7 @@ import {
   stories,
   threads,
 } from '../../store/index.ts';
-import { chatsOfCharacter, chatsOfStory, startChat } from '../../chats.ts';
+import { chatsOfCharacter, removeStoryPreservingCast, startChat } from '../../chats.ts';
 import { param, reject } from './shared.ts';
 import {
   sanitiseCharacter,
@@ -46,7 +47,7 @@ import {
   sanitiseThread,
 } from './sanitise.ts';
 import { cloneStoryBundle, insertThread, noteStoryId, threadStoryId } from './bundle.ts';
-import { getDb } from '../../db.ts';
+import { getDb, transaction } from '../../db.ts';
 
 const mod = new Hono();
 
@@ -110,11 +111,15 @@ mod.patch('/stories/:id', async (c) => {
 mod.delete('/stories/:id', (c) => {
   const id = param(c, 'id');
   if (!stories.get(id)) return notFound(c, 'Story');
-  /* A character chat is deleted with the card it borrows, by the foreign key —
-     but the writer is told what went with it instead of finding out later. */
-  const chats = chatsOfStory(id);
-  stories.remove(id);
-  return c.json<{ ok: true; chats: string[] }>({ ok: true, chats: chats.map((chat) => chat.title) });
+  /* The characters this story authored are not deleted with it, and neither are
+     their chats — `removeStoryPreservingCast` freezes the borrowed persona in
+     before the row goes. Both are reported so the confirm can name them. */
+  const { cards, chats } = removeStoryPreservingCast(id);
+  return c.json<{ ok: true; characters: string[]; chats: string[] }>({
+    ok: true,
+    characters: cards.map((card) => card.name),
+    chats: chats.map((chat) => chat.title),
+  });
 });
 
 mod.post('/stories/:id/duplicate', (c) => {
@@ -166,8 +171,20 @@ mod.delete('/scenes/:id', (c) => {
   return c.json<{ ok: true }>({ ok: true });
 });
 
-/* -- characters ---------------------------------------------------------- */
+/* -- characters and casts ------------------------------------------------- */
 
+/**
+ * Every character in the library, with its cast memberships.
+ *
+ * App-scoped, because a card is: `/api/characters`, not
+ * `/api/stories/:id/characters`. The Cast page's `Library` scope reads it, and so
+ * does the delete confirm — a card can be cast in stories the client never loaded.
+ */
+mod.get('/characters', (c) => {
+  return c.json<CastIndex>({ characters: characters.list(), casts: cast.all() });
+});
+
+/** A story's payload cast: one borrowed card for a chat, `story_cast` otherwise. */
 mod.get('/stories/:id/characters', (c) => {
   const story = stories.get(param(c, 'id'));
   if (!story) return notFound(c, 'Story');
@@ -175,6 +192,12 @@ mod.get('/stories/:id/characters', (c) => {
 });
 
 /**
+ * Write a new card in this story, cast here.
+ *
+ * Card and home membership are two rows, so they commit together.
+ * `characters.create` stays flat because `insertBundle` already supplies a
+ * transaction and `transaction()` is not re-entrant.
+ *
  * The cast of a chat is borrowed, not written: it is exactly the card the chat was
  * started from. Letting this create a row anyway would insert a character the
  * composer never reads — an invisible orphan that looks like a successful save.
@@ -192,19 +215,78 @@ mod.post('/stories/:id/characters', async (c) => {
   const sanitised = sanitiseCharacter(body);
   if (sanitised.rejected.length > 0) return reject(c, 'character fields', sanitised.rejected);
 
-  return c.json<Character>(characters.create(story.id, sanitised.patch));
+  return c.json<Character>(transaction(() => characters.create(story.id, sanitised.patch)));
+});
+
+/**
+ * Adopt an existing card into this story's cast.
+ *
+ * The reason the library exists: a blank story gets a cast without anyone being
+ * written twice. The card keeps one definition and one home, so editing it later
+ * edits it in every story that casts it — a reference, not a copy.
+ */
+mod.post('/stories/:id/cast', async (c) => {
+  const story = stories.get(param(c, 'id'));
+  if (!story) return notFound(c, 'Story');
+  /* A chat's cast is its `character_id`, by definition. A member row would be a
+     second opinion about the payload, and the composer reads the first. */
+  if (story.characterId) {
+    return fail(c, 400, 'A chat has exactly one character', 'A cast cannot be added to.');
+  }
+
+  const body = await readBody<CastAttachBody>(c);
+  const characterId = asString(body?.characterId).trim();
+  if (!characterId) return fail(c, 400, 'Invalid body', 'Expected { characterId }.');
+  if (!characters.get(characterId)) return notFound(c, 'Character');
+
+  // Idempotent: re-adding a card that is already cast is a no-op, not a 409.
+  if (!cast.has(story.id, characterId)) cast.add(story.id, characterId);
+  return c.json<Character[]>(cast.listForStory(story.id));
+});
+
+/**
+ * Drop a card from this story's cast, leaving the card — and every other story
+ * that casts it — untouched.
+ *
+ * The home story cannot be detached: the card would keep its home and its chat
+ * while vanishing from the only cast that authored it. That is a delete, and
+ * there is already a control for it.
+ */
+mod.delete('/stories/:id/cast/:characterId', (c) => {
+  const story = stories.get(param(c, 'id'));
+  if (!story) return notFound(c, 'Story');
+  const characterId = param(c, 'characterId');
+  const character = characters.get(characterId);
+  if (!character) return notFound(c, 'Character');
+  if (!cast.has(story.id, characterId)) return notFound(c, 'Cast member');
+  if (character.homeStoryId === story.id) {
+    return fail(c, 400, 'This card belongs to this story', 'Delete the character instead.');
+  }
+  cast.remove(story.id, characterId);
+  return c.json<{ ok: true }>({ ok: true });
 });
 
 /**
  * Start the 1:1 chat with this character, or hand back the one that already
  * exists. One chat per character, so this is not "create" so much as "open
  * or create" — re-clicking a card must land in the conversation it started.
+ *
+ * `fromStoryId` is only consulted for a card whose home story is gone, and must
+ * name a story that casts it: the world a chat draws from has to be one the
+ * writer can actually see the card in.
  */
-mod.post('/characters/:id/chat', (c) => {
-  const outcome = startChat(param(c, 'id'));
+mod.post('/characters/:id/chat', async (c) => {
+  const body = await readBody<StartChatBody>(c);
+  const fromStoryId = asString(body?.fromStoryId).trim() || undefined;
+  const outcome = startChat(param(c, 'id'), { fromStoryId });
   if (outcome.kind === 'unknown-character') return notFound(c, 'Character');
   if (outcome.kind === 'orphan') {
-    return fail(c, 409, 'This character has no story to draw from', 'It cannot be chatted with yet.');
+    return fail(
+      c,
+      409,
+      'This character has no world to draw from',
+      'Its home story is gone, and this story does not cast it. Open a story that casts it and start the chat there.',
+    );
   }
   if (outcome.kind === 'exists') {
     return fail(c, 409, 'This character already has a chat', outcome.story.title);
@@ -229,11 +311,17 @@ mod.patch('/characters/:id', async (c) => {
 mod.delete('/characters/:id', (c) => {
   const id = param(c, 'id');
   if (!characters.get(id)) return notFound(c, 'Character');
-  /* The chat goes with the card by foreign key; naming it here is what lets the
-     client say so before asking, and after it happens. */
+  /* The chat goes with the card by foreign key, and so does every cast row —
+     which is why both are read *before* the delete. Naming the affected stories
+     is what lets a client say the card is leaving more than the one you see. */
   const chats = chatsOfCharacter(id);
+  const storyIds = cast.storyIdsFor(id);
   characters.remove(id);
-  return c.json<{ ok: true; chats: string[] }>({ ok: true, chats: chats.map((chat) => chat.title) });
+  return c.json<{ ok: true; chats: string[]; storyIds: string[] }>({
+    ok: true,
+    chats: chats.map((chat) => chat.title),
+    storyIds,
+  });
 });
 
 /* -- personas ------------------------------------------------------------ */

@@ -22,7 +22,8 @@ import type { Story, Scene, Theme } from '../../../shared/types.ts';
 import type { StoryTemplateId } from '../../../shared/api.ts';
 export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setTheme' | 'setStoryTheme' | 'loadStories' | 'loadStoryStats' | 'openStory' | 'refreshBundle' |
   'createStory' | 'duplicateStory' | 'archiveStory' | 'updateStory' | 'createScene' | 'switchScene' |
-  'updateScene' | 'archiveScene' | 'createCard' | 'startChatWith' | 'setRightTab' | 'setRailOpen' | 'setPage' | 'setDrawer' |
+  'updateScene' | 'archiveScene' | 'createCard' | 'startChatWith' | 'loadCastLibrary' | 'refreshCastLibrary' |
+  'addToCast' | 'removeFromCast' | 'setRightTab' | 'setRailOpen' | 'setPage' | 'setDrawer' |
   'openDialog' | 'setPalette' | 'toast' | 'dismissToast' | 'fail'> {
   return {
     boot: async () => {
@@ -173,7 +174,10 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       get().openDialog({
         kind: 'confirm',
         title: `Delete “${story?.title ?? 'this story'}”?`,
-        body: 'Every scene, character, memory and cost record for this story goes with it — and any character chats started from it. This cannot be undone.',
+        body:
+          'This story’s scenes, memories, directive blocks and persona pool go with it. ' +
+          'Its characters stay in your library, and conversations with them keep their transcript — ' +
+          'they just stop sharing this story’s persona. This cannot be undone.',
         confirmLabel: 'Delete story',
         danger: true,
         run: () => {
@@ -187,12 +191,21 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
                 const next = stories[0];
                 if (next) await get().openStory(next.id);
               }
+              /* A delete here can shrink a *different* story's cast, so the library
+                 read model is stale the moment the result comes back. */
+              await get().refreshCastLibrary();
+              const kept = [
+                result.characters.length > 0
+                  ? `${result.characters.length} character${result.characters.length === 1 ? '' : 's'}`
+                  : '',
+                result.chats.length > 0
+                  ? `${result.chats.length} conversation${result.chats.length === 1 ? '' : 's'}`
+                  : '',
+              ].filter(Boolean);
               get().toast({
                 kind: 'ok',
                 title: 'Story deleted',
-                ...(result.chats.length > 0
-                  ? { detail: `Also removed ${result.chats.length} chat${result.chats.length === 1 ? '' : 's'}: ${result.chats.join(', ')}` }
-                  : {}),
+                ...(kept.length > 0 ? { detail: `Kept in your library: ${kept.join(' and ')}` } : {}),
               });
             } catch (error) {
               get().fail(error, 'Could not delete the story');
@@ -285,9 +298,51 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
             ? await api.characters.create(storyId, { name: 'New character' })
             : await api.personas.create(storyId, { name: 'New persona' });
         await get().refreshBundle({ quiet: true });
+        await get().refreshCastLibrary();
         get().openDialog({ kind: 'card', card, id: created.id });
       } catch (error) {
         get().fail(error, card === 'character' ? 'Could not add a character' : 'Could not add a persona');
+      }
+    },
+
+    /* ------------------------------------------------------- character library */
+
+    loadCastLibrary: async () => {
+      try {
+        set({ castLibrary: await api.characters.library(), castLibraryError: null });
+      } catch (error) {
+        /* Held rather than toasted: the only surface that can act on it is the
+           Cast page, which shows the reason beside a retry. */
+        set({ castLibraryError: describeError(error) });
+      }
+    },
+
+    refreshCastLibrary: async () => {
+      if (get().castLibrary === null) return;
+      await get().loadCastLibrary();
+    },
+
+    addToCast: async (characterId) => {
+      const storyId = get().activeStoryId;
+      if (!storyId) return;
+      try {
+        await api.cast.add(storyId, characterId);
+        await get().refreshBundle({ quiet: true });
+        await get().refreshCastLibrary();
+      } catch (error) {
+        get().fail(error, 'Could not add that character to the cast');
+      }
+    },
+
+    removeFromCast: async (characterId) => {
+      const storyId = get().activeStoryId;
+      if (!storyId) return;
+      try {
+        await api.cast.remove(storyId, characterId);
+        await get().refreshBundle({ quiet: true });
+        await get().refreshCastLibrary();
+      } catch (error) {
+        get().fail(error, 'Could not remove that character from the cast');
       }
     },
 
@@ -300,7 +355,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
      * is opened *from* the cast page, and `openStory` deliberately does not move
      * the centre column on its own.
      */
-    startChatWith: async (characterId) => {
+    startChatWith: async (characterId, fromStoryId) => {
       const existing = get().stories.find((story) => story.characterId === characterId);
       if (existing) {
         await get().openStory(existing.id);
@@ -309,7 +364,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       }
 
       try {
-        const chat = await api.characters.startChat(characterId);
+        const chat = await api.characters.startChat(characterId, fromStoryId);
         set({ stories: [chat, ...get().stories] });
         await get().openStory(chat.id);
         set({ page: 'story' });

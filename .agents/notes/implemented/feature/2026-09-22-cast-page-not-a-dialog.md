@@ -47,6 +47,9 @@ library rail.**
   recency, name or weight. Characters and personas share the grid because "who is in this story,
   and who am I" is one question even though it is two tables; grouping by kind returns only when
   no filter has been asked for, since a filter is a request for one list.
+  *(Revisited: the page now has a `Library` scope beside `This story`, and the library scope
+  groups by home story instead of by kind. See
+  [the cast is a library](2026-09-22-cast-is-a-library.md).)*
 - **Every card prints its token count**, from the server's own accounting. These cards sit in the
   frozen prefix: a 400-token card is 400 tokens on every request for the life of the story, and
   that is the one figure here a writer acts on.
@@ -158,6 +161,11 @@ a schema decision, not a UI one, and is not smuggled in here.
 characters. Out of scope, and a different product: every card in Reepi is a row owned by one
 story, priced into that story's prefix, and import/export is already the route between stories.
 
+*(Partly revisited: the writer's **own** library shipped as
+[the cast is a library](2026-09-22-cast-is-a-library.md) — cards are castable into any story
+while keeping one home. Browsing **other people's** characters, the design this bullet
+rejected, is still out of scope: there is no discovery, no sharing and no external corpus.)*
+
 ## Consequences
 
 - **One more piece of store state, and one more branch in `App`.** `page` is a two-member union
@@ -167,10 +175,11 @@ story, priced into that story's prefix, and import/export is already the route b
   section loses the roster. Deliberate — the drawer would otherwise cover the roster with a panel
   about a story that is not visible behind it — but it is a rule a reader has to know, so it is
   commented at both call sites.
-- **The roster is per story**, so there is no "browse other people's characters" surface and no
-  discovery. That is the reframing of the reference design rather than a missing feature: Reepi's
-  unit of work is the story, and a cast outside a story has no token cost and no cache argument,
-  which is the only thing that makes a card interesting here.
+- **The roster was per story**, so there was no "browse other people's characters" surface and no
+  discovery — still true: Reepi's unit of work is the story, and a card in nobody's cast has no
+  token cost and no cache argument. What changed is that the writer's *own* cards are no longer
+  trapped in the story that wrote them; they are a library you cast from
+  ([the cast is a library](2026-09-22-cast-is-a-library.md)).
 - **The four-figure grid is not virtualised.** A cast of a few dozen cards renders fine; a cast of
   thousands would not. Accepted knowingly — `CastPage` costs one DOM node per card, and the
   search field is the answer long before virtualisation is.

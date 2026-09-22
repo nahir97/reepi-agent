@@ -9,6 +9,7 @@
 
 import type {
   AccountInfo,
+  CastIndex,
   DiagnoseReport,
   ExportFormat,
   Insights,
@@ -111,6 +112,17 @@ export type Store = {
   /** The writer's chosen scene; falls back to the first unarchived one. */
   activeSceneId: string | null;
   bundle: StoryBundle | null;
+  /**
+   * The character library's read model: every card, plus every cast membership.
+   *
+   * Loaded by the Cast page rather than by `openStory`, because it is app-scoped
+   * and only that page needs it — `null` means "never fetched", which is what
+   * `refreshCastLibrary` keys off so editing a card from the rail does not pull a
+   * list nobody is looking at.
+   */
+  castLibrary: CastIndex | null;
+  /** Why the library read failed, if it did. Shown inline on the Cast page. */
+  castLibraryError: string | null;
   loadingBundle: boolean;
   booted: boolean;
   offline: string | null;
@@ -189,8 +201,20 @@ export type Store = {
   /**
    * Open this character's 1:1 chat, creating it the first time. A card has at
    * most one chat, so this is "open or start" rather than "create".
+   *
+   * `fromStoryId` names the world to seed from when the card's home story is
+   * gone — it must be a story that casts the card. Only that case needs it.
    */
-  startChatWith: (characterId: string) => Promise<void>;
+  startChatWith: (characterId: string, fromStoryId?: string) => Promise<void>;
+
+  /** Read the whole character library. */
+  loadCastLibrary: () => Promise<void>;
+  /** Re-read it, but only if something has already loaded it. */
+  refreshCastLibrary: () => Promise<void>;
+  /** Adopt an existing card into the open story's cast. */
+  addToCast: (characterId: string) => Promise<void>;
+  /** Drop a card from the open story's cast, leaving the card alone. */
+  removeFromCast: (characterId: string) => Promise<void>;
 
   setRightTab: (tab: RailView) => void;
   setRailOpen: (open: boolean) => void;

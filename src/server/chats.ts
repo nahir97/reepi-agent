@@ -31,34 +31,57 @@
 import { greetingOf } from './cards.ts';
 import { transaction } from './db.ts';
 import { expandMacros, macroContextOf } from './macros.ts';
-import { characters, lore, messages, scenes, stories } from './store/index.ts';
-import type { Character, Story } from '../shared/types.ts';
+import { cast, characters, lore, messages, personas, resolvePersona, scenes, stories } from './store/index.ts';
+import type { Character, Persona, Story } from '../shared/types.ts';
 
 export type StartChatOutcome =
   | { kind: 'created'; story: Story }
   | { kind: 'exists'; story: Story }
   | { kind: 'unknown-character' }
-  /** The card exists but the story that owns it does not — a hand-edited database. */
+  /** The card has no home story left, and the caller named no story that casts it. */
   | { kind: 'orphan' };
 
-export function startChat(characterId: string): StartChatOutcome {
+/**
+ * Start a chat with a card.
+ *
+ * The world it seeds from is the card's **home** story. A card whose home was
+ * deleted is still chattable — it just needs a world, and `fromStoryId` supplies
+ * one when that story casts the card. That is the whole recovery path for a
+ * library card: the writer picks which story's world the conversation starts in.
+ */
+export function startChat(characterId: string, options: { fromStoryId?: string } = {}): StartChatOutcome {
   const character = characters.get(characterId);
   if (!character) return { kind: 'unknown-character' };
 
-  const source = stories.get(character.storyId);
-  if (!source) return { kind: 'orphan' };
-
-  /* Every guard above and below is synchronous on a single-threaded server, so
-     "check then insert" cannot interleave with another request. The unique index
-     is the belt to this braces. */
+  /* An existing conversation is handed back whatever the state of the world it
+     was seeded from: the writer asked to open *that* chat, and a deleted home
+     story must not turn "open chat" into an error. */
   const existing = stories.chatFor(characterId);
   if (existing) return { kind: 'exists', story: existing };
 
-  return { kind: 'created', story: transaction(() => openChat(character, source)) };
+  const source = sourceStoryFor(character, options.fromStoryId);
+  if (!source) return { kind: 'orphan' };
+
+  /* A card with no home has no pool to borrow, so its chat will own the persona
+     it starts with. Everything below is synchronous on a single-threaded server,
+     so "check then insert" cannot interleave with another request; the unique
+     index is the belt to this braces. */
+  const ownsPersona = character.homeStoryId === null;
+  return { kind: 'created', story: transaction(() => openChat(character, source, { ownsPersona })) };
+}
+
+/** The story a chat draws its world and persona pool from, or `null` if there is none. */
+function sourceStoryFor(character: Character, fromStoryId?: string): Story | null {
+  if (character.homeStoryId) return stories.get(character.homeStoryId);
+  /* A card that outlived its home story: only a story that actually casts it can
+     vouch for a world, so the caller cannot point the chat at an unrelated one. */
+  if (!fromStoryId) return null;
+  if (!cast.has(fromStoryId, character.id)) return null;
+  return stories.get(fromStoryId);
 }
 
 /** The write sequence itself. Always reached through `startChat`. */
-function openChat(character: Character, source: Story): Story {
+function openChat(character: Character, source: Story, options: { ownsPersona: boolean }): Story {
   const chat = stories.create({
     title: character.name.trim() || 'Chat',
     characterId: character.id,
@@ -89,6 +112,12 @@ function openChat(character: Character, source: Story): Story {
   });
 
   const scene = scenes.create(chat.id, { title: 'Opening' });
+
+  /* A card with no home story has no pool to borrow, so this chat keeps the
+     persona it starts with — the source story's, resolved before the chat has a
+     pool of its own. Frozen *before* the greeting is rendered, because the
+     greeting's `{{user}}` resolves against the chat's own context. */
+  if (options.ownsPersona) freezePersonaInto(chat, resolvePersona(source));
 
   /* Anchored lore is world canon and costs nothing to carry. Entries at depth,
      before or after are keyed to the group story's turns — copied here they would
@@ -135,19 +164,72 @@ function openChat(character: Character, source: Story): Story {
 /* ------------------------------------------------------------------ cascades */
 
 /**
- * The chats that go with a card, and with every card a story owns.
+ * Keep the persona a chat was using, in the chat's own pool.
  *
- * `character_id` is a real foreign key with `ON DELETE CASCADE`, so the database
- * removes these rows whether or not a caller asks. These two readers exist so the
- * *writer* can be told what is about to disappear, in the confirm that asks for
+ * A chat borrows its persona pool from the card's home story, so when that story
+ * is deleted the borrow has nothing to resolve against. The chat would then send
+ * no persona block at all and every turn the writer ever wrote would re-render as
+ * "Player" — a silent loss of identity across a whole transcript, which is the
+ * same failure `DELETE /personas/:id` already sweeps stories to avoid.
+ *
+ * Freezing is only correct here *because* the pool is gone: the rule against
+ * copying a persona into a chat is about drift between two live definitions, and
+ * there is no second definition left. Idempotent — a chat that already owns a
+ * pool (a rescued one, or one started from a home-less card) is left alone.
+ *
+ * The persona is passed in rather than resolved from the chat: at the moment a
+ * home-less chat is created its own pool is still empty, so resolving against
+ * *it* would find nothing and freeze nothing.
+ */
+export function freezePersonaInto(chat: Story, persona: Persona | null): void {
+  if (!persona) return;
+  if (personas.list(chat.id).length > 0) return;
+  const frozen = personas.create(chat.id, {
+    name: persona.name,
+    description: persona.description,
+    avatar: persona.avatar,
+    isDefault: true,
+  });
+  stories.update(chat.id, { personaId: frozen.id });
+}
+
+/**
+ * Delete a story, keeping everything it *authored* that is not the story.
+ *
+ * Two things no schema can express, so one transaction does:
+ *
+ * - **The characters survive.** `home_story_id` is `ON DELETE SET NULL`, so the
+ *   cards live on as library objects. This is the release's headline: a story is
+ *   a world, not a container for its people.
+ * - **Their chats survive too**, with the persona above frozen in, because a
+ *   conversation is the writer's prose and a delete must not take it silently.
+ *   The chats are resolved *before* the write, while the home story — and
+ *   therefore the borrowed pool — still exists.
+ *
+ * The rest is the FK cascade: this story's cast rows, its persona pool, its
+ * scenes, messages, memories, lore, threads, notes, prefixes and warm-up.
+ */
+export function removeStoryPreservingCast(storyId: string): { cards: Character[]; chats: Story[] } {
+  const cards = characters.listByHome(storyId);
+  const chats = stories.chatsForCharacters(cards.map((card) => card.id));
+  return transaction(() => {
+    /* Resolved while the home story — and its persona pool — still exists. */
+    for (const chat of chats) freezePersonaInto(chat, resolvePersona(chat));
+    stories.remove(storyId);
+    return { cards, chats };
+  });
+}
+
+/**
+ * The chats that go with a card, and with every card a story authored.
+ *
+ * `character_id` is a real foreign key with `ON DELETE CASCADE`, so deleting the
+ * *card* removes its chat whether or not a caller asks. These two readers exist
+ * so the writer can be told what is about to happen, in the confirm that asks for
  * permission — a delete that silently takes a conversation with it is the one
  * thing this design must not do.
  */
 export function chatsOfCharacter(characterId: string): Story[] {
   const chat = stories.chatFor(characterId);
   return chat ? [chat] : [];
-}
-
-export function chatsOfStory(storyId: string): Story[] {
-  return stories.chatsForCharacters(characters.list(storyId).map((character) => character.id));
 }

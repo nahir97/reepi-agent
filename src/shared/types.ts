@@ -292,7 +292,12 @@ export type LoreHit = {
 
 export type Character = {
   id: string;
-  storyId: string;
+  /**
+   * The story that authored the card — its home — or `null` once that story is
+   * gone. A card is a library object: this says where it came from, not where it
+   * is cast. Stories that adopted it are unaffected when this goes null.
+   */
+  homeStoryId: string | null;
   name: string;
   /** Short tagline shown on the card. */
   tagline: string;

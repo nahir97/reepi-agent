@@ -77,7 +77,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       {
         id: 'cast',
         label: 'Cast',
-        hint: 'the roster — characters and personas',
+        hint: 'your character library, and this story’s cast',
         group: 'Go',
         run: () => {
           setPage('cast');

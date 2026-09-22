@@ -40,6 +40,26 @@ export type StoryBundle = {
   notes: DirectorNote[];
 };
 
+/**
+ * The whole character library, in one read: every card, plus every cast
+ * membership. The Cast page's `Library` scope needs both — the cards to show,
+ * the memberships to say which stories each one is in — and the cross-story
+ * delete confirm needs the memberships before the card is gone.
+ *
+ * Cards are *not* children of a story any more, so this is app-scoped rather
+ * than story-scoped: `/api/characters`, not `/api/stories/:id/characters`.
+ */
+export type CastIndex = {
+  characters: Character[];
+  casts: { storyId: string; characterId: string }[];
+};
+
+/** Adding an existing card to a story's cast. */
+export type CastAttachBody = { characterId: string };
+
+/** Starting a chat from a card that has no home story left to draw a world from. */
+export type StartChatBody = { fromStoryId?: string };
+
 export type Insights = {
   totals: {
     costUsd: number;

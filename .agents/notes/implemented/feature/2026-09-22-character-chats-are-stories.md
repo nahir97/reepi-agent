@@ -11,10 +11,10 @@ of you with nothing to do.
 
 The hard part was not the button. It was where a 1:1 conversation *lives*, because Reepi's unit
 of work is the story: it owns the transcript, the cache prefix, the persona, the cost ledger,
-the scenes and the memories. A character, meanwhile, is a row owned by exactly one story and
-priced into that story's prefix — the [cast page
-note](2026-09-22-cast-page-not-a-dialog.md) rejected a cross-story character library for
-precisely that reason.
+the scenes and the memories. A character, meanwhile, is content the writer reuses — one
+definition, priced into every prefix it is cast into
+([the cast is a library](2026-09-22-cast-is-a-library.md) made that a row in `story_cast`
+rather than a `story_id`).
 
 So the question is what an "isolated chat with one character" **is**, in a product whose only
 session-shaped object is a story.
@@ -25,11 +25,14 @@ session-shaped object is a story.
 is the whole link, and everything else about a chat is borrowed or derived:
 
 - **Cast: one borrowed card.** `castOf(story)` returns the referenced card for a chat and the
-  story's own rows otherwise. The character stays one definition, owned by exactly one story —
-  editing the card anywhere edits the card everywhere, and the chat re-prices next turn.
-- **Persona pool: borrowed too.** `personaPoolOf(story)` is the pool of the story the card
-  lives in. A chat owns no personas, so the writer's identity is one card rather than one per
-  conversation, and "switch who I am" is a selection rather than a copy.
+  story's `story_cast` rows otherwise. The character stays one definition — editing the card
+  anywhere edits the card everywhere, and the chat re-prices next turn.
+- **Persona pool: borrowed too.** `personaPoolOf(story)` is the pool of the story the card was
+  written in — its home. A chat owns no personas, so the writer's identity is one card rather
+  than one per conversation, and "switch who I am" is a selection rather than a copy. *(The one
+  exception: when that home story is deleted, the persona the chat was using is copied into the
+  chat, because there is no pool left to borrow. See
+  [the cast is a library](2026-09-22-cast-is-a-library.md).)*
 - **Seed: the world, never the transcript.** Starting a chat copies the directive blocks
   (contract, genre, style, bible, scenario, exemplars), the writing settings (model, effort,
   sampling, budgets, prefill, theme) and the **anchored** lore, then seeds the card's greeting
@@ -39,11 +42,11 @@ is the whole link, and everything else about a chat is borrowed or derived:
 - **One chat per character**, enforced twice: `startChat` hands back the existing chat instead
   of creating a second, and a partial unique index (`stories_character_id … WHERE character_id
   IS NOT NULL`) makes a second row impossible even under a race.
-- **`ON DELETE CASCADE`, deliberately.** `character_id` is a real foreign key, so deleting the
-  card deletes the chat and its children, and deleting the story that owns the card cascades
-  through the card into the chat. That is a two-hop cascade the routes never have to remember —
-  which is the point, and is why the delete responses *report* the chats they took: the confirm
-  copy names the conversation before the writer agrees to it.
+- **`ON DELETE CASCADE` on the card, deliberately.** `character_id` is a real foreign key, so
+  deleting the *card* deletes the chat and its children, and the delete response names the
+  conversation before the writer agrees. Deleting the *story* no longer does: its cards survive
+  with a null home and its conversations survive with their persona frozen, both reported
+  ([the cast is a library](2026-09-22-cast-is-a-library.md)).
 - **The composer can change persona mid-chat.** The persona block is volatility 2, so a switch
   invalidates that block and everything behind it — the cast and the world in front of it stay
   cached. The chip states that trade in one line rather than hiding it behind a confirm, and
@@ -59,14 +62,17 @@ The API is two changes: `POST /api/characters/:id/chat` (open-or-create; 409 wit
 chat's title when there is one), and the routes that resolve a story's cast or persona pool go
 through the same helpers the composer does — `GET /stories/:id/characters`,
 `GET /stories/:id/personas`, `POST /stories/:id/personas`. A chat refuses to create a second
-character (`400`), because the row would be invisible to the composer that resolves the cast.
+character (`400`) and refuses an added cast member (`400`,
+[the cast is a library](2026-09-22-cast-is-a-library.md)), because either row would be
+invisible to the composer that resolves the cast.
 
 ## Verification
 
-- `npm run verify:store` — **37/37**, including the chat cases: a chat borrows exactly one
+- `npm run verify:store` — **121/121**, including the chat cases: a chat borrows exactly one
   card, borrows the home persona pool while owning no persona rows, seeds the greeting,
-  copies anchored lore only, refuses a second chat through the unique index, and takes the
-  card's chats with it when the owning story is deleted.
+  copies anchored lore only, refuses a second chat through the unique index, and — since
+  [the cast is a library](2026-09-22-cast-is-a-library.md) — survives the deletion of the story
+  it was seeded from with its transcript and its persona frozen in.
 - `npm run verify:tx` — unchanged and passing; chat creation is a multi-row transaction.
 - `npm run verify:cache` — **88.0% overall hit rate** (5760 hit / 788 miss), worst prediction
   drift 4.7pt after the cold turn, i.e. the normal-story composer path is unaffected by the
@@ -110,8 +116,10 @@ switch among.
 **A studio-wide persona library.** The honest long-term version of the same idea: personas live
 above stories, and every story references them. Deferred, not rejected — it is a schema
 decision in its own right (a persona table with no owning story changes what deleting a story
-means) and the borrowed-pool arrangement already gives one persona across every chat started
-from a story.
+means, and `is_default` is a property of a pool rather than of a persona), and the
+borrowed-pool arrangement already gives one persona across every chat started from a story.
+[The cast is a library](2026-09-22-cast-is-a-library.md) built exactly this shape for
+*characters* and deliberately left personas out; the deferral now has a precedent to copy.
 
 **A `kind` column alongside `character_id`.** Rejected as redundant state: a chat *is* a story
 whose `character_id` is set, and every reader that needs to distinguish them can ask that. A
@@ -139,13 +147,16 @@ chat's card could point it at a card in another story with no cascade guard.
 - **The borrowed pool has a sharp edge:** editing a persona from inside a chat edits the shared
   card, and therefore changes the source story's next payload too. That is the intended
   consequence of "one definition", and it is legible because the same card is listed in both
-  places.
-- **Deleting a card or a story can delete a conversation**, which is why both delete paths
-  return the affected chat titles and the client names them in the confirm. Silent loss would
-  have been the real cost of the cascade.
-- **Two hops of cascade are load-bearing**, and `verify:store` pins the second one
-  (`story → characters → chat`) precisely because it is invisible from the schema of any single
-  table.
+  places. The edge stops at the source story's deletion: the chat keeps the persona it was
+  using ([the cast is a library](2026-09-22-cast-is-a-library.md)).
+- **Deleting a card can delete a conversation**, which is why that delete path returns the
+  affected chat titles and the client names them in the confirm. Silent loss would have been the
+  real cost of the cascade. Deleting a *story* no longer can: the card survives it and the chat
+  survives with its persona frozen, both reported.
+- **One cascade hop is load-bearing** — `characters → stories` (deleting the card deletes its
+  chat) — and `verify:store` pins it, because it is invisible from the schema of either table
+  alone. The second hop (`stories → characters → stories`) is deliberately gone: it was the
+  mechanism that made a story's delete take the writer's people with it.
 - **Duplicating or exporting a chat produces a standalone story.** `insertBundle` nulls
   `characterId` on every copy, so the branch/export carries a real copy of the card. A chat is
   not exportable as a chat, and that is the honest unit: the reference means nothing outside

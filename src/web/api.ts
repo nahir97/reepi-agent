@@ -11,6 +11,7 @@ import type {
   AccountInfo,
   ArchivistResult,
   BranchBody,
+  CastIndex,
   ConductorResult,
   DiagnoseReport,
   DirectorResult,
@@ -240,7 +241,10 @@ export const api = {
     update: (storyId: string, patch: Partial<Story>, signal?: AbortSignal) =>
       send<Story>(`/api/stories/${enc(storyId)}`, json('PATCH', patch, signal)),
     remove: (storyId: string, signal?: AbortSignal) =>
-      send<{ ok: true; chats: string[] }>(`/api/stories/${enc(storyId)}`, json('DELETE', undefined, signal)),
+      send<{ ok: true; characters: string[]; chats: string[] }>(
+        `/api/stories/${enc(storyId)}`,
+        json('DELETE', undefined, signal),
+      ),
     duplicate: (storyId: string, signal?: AbortSignal) =>
       send<Story>(`/api/stories/${enc(storyId)}/duplicate`, json('POST', {}, signal)),
     setTheme: (storyId: string, theme: Theme, signal?: AbortSignal) =>
@@ -272,21 +276,44 @@ export const api = {
   /* ---------------------------------------------------------- characters */
 
   characters: {
+    /** The story's payload cast. */
     list: (storyId: string, signal?: AbortSignal) =>
       send<Character[]>(`/api/stories/${enc(storyId)}/characters`, json('GET', undefined, signal)),
+    /** Every card in the library, plus every cast membership. */
+    library: (signal?: AbortSignal) => send<CastIndex>('/api/characters', json('GET', undefined, signal)),
     create: (storyId: string, patch: Partial<Character>, signal?: AbortSignal) =>
       send<Character>(`/api/stories/${enc(storyId)}/characters`, json('POST', patch, signal)),
     update: (characterId: string, patch: Partial<Character>, signal?: AbortSignal) =>
       send<Character>(`/api/characters/${enc(characterId)}`, json('PATCH', patch, signal)),
     remove: (characterId: string, signal?: AbortSignal) =>
-      send<{ ok: true; chats: string[] }>(`/api/characters/${enc(characterId)}`, json('DELETE', undefined, signal)),
+      send<{ ok: true; chats: string[]; storyIds: string[] }>(
+        `/api/characters/${enc(characterId)}`,
+        json('DELETE', undefined, signal),
+      ),
     /**
      * Open this character's 1:1 chat, creating it on first use. One chat per
      * character, so a repeat call is answered with 409 rather than a second
      * conversation — the caller then opens the chat that already exists.
+     *
+     * `fromStoryId` is only needed for a card whose home story is gone: it names
+     * the story that casts the card and lends the chat its world.
      */
-    startChat: (characterId: string, signal?: AbortSignal) =>
-      send<Story>(`/api/characters/${enc(characterId)}/chat`, json('POST', {}, signal)),
+    startChat: (characterId: string, fromStoryId?: string, signal?: AbortSignal) =>
+      send<Story>(
+        `/api/characters/${enc(characterId)}/chat`,
+        json('POST', fromStoryId ? { fromStoryId } : {}, signal),
+      ),
+  },
+
+  /* ------------------------------------------------------------------ cast */
+
+  cast: {
+    /** Adopt an existing card into this story's cast. Idempotent. */
+    add: (storyId: string, characterId: string, signal?: AbortSignal) =>
+      send<Character[]>(`/api/stories/${enc(storyId)}/cast`, json('POST', { characterId }, signal)),
+    /** Drop a card from this story's cast, without deleting it anywhere. */
+    remove: (storyId: string, characterId: string, signal?: AbortSignal) =>
+      send<{ ok: true }>(`/api/stories/${enc(storyId)}/cast/${enc(characterId)}`, json('DELETE', undefined, signal)),
   },
 
   /* ------------------------------------------------------------ personas */

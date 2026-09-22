@@ -9,14 +9,15 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 const dir = mkdtempSync(join(tmpdir(), 'reepi-store-'));
 const { openDatabase, closeDatabase, getDb } = await import('../src/server/db.ts');
 const {
-  stories, scenes, characters, personas, lore, messages, memories, notes, threads,
+  stories, scenes, characters, cast, personas, lore, messages, memories, notes, threads,
   ledger, prefixes, settings, warmups, templates, loadStoryBundle, resolvePersona,
 } = await import('../src/server/store/index.ts');
-const { startChat } = await import('../src/server/chats.ts');
+const { startChat, removeStoryPreservingCast } = await import('../src/server/chats.ts');
 const { recreateStoryBundle } = await import('../src/server/routes/library/bundle.ts');
 const { expandMacros, macroContextOf, macroCatalogue } = await import('../src/server/macros.ts');
 const { compose } = await import('../src/server/composer.ts');
@@ -134,6 +135,44 @@ check('duplicating a chat yields a standalone story', Boolean(
   branched && branched.story.characterId === null && branched.characters.length === 1 &&
   branched.messages.length === 1,
 ));
+check('a copy is cast in the story it was copied into', branched ? cast.listForStory(branched.story.id).length === 1 : false);
+
+/* --- the cast is a library: one card, many casts ---------------------------
+   The card keeps one definition and one home; a second story adopts it. An edit
+   made anywhere is visible everywhere, which is the whole reason this is a
+   reference and not a copy. */
+const blank = stories.create({ title: 'Blank' });
+check('a new story starts with an empty cast', cast.listForStory(blank.id).length === 0);
+check('the home story casts its card', cast.listForStory(story.id).map((card) => card.id).join(',') === chr.id);
+
+cast.add(blank.id, chr.id);
+check('adopting puts the same card in a second cast', cast.listForStory(blank.id).map((card) => card.id).join(',') === chr.id);
+check('adopting does not move the card', characters.get(chr.id)?.homeStoryId === story.id);
+check('adopting leaves the home cast intact', cast.listForStory(story.id).length === 1);
+check('adopting twice is a no-op', (() => {
+  cast.add(blank.id, chr.id);
+  return cast.listForStory(blank.id).length === 1;
+})());
+check('the library index reports both casts', cast.all().filter((entry) => entry.characterId === chr.id).length === 2);
+check(
+  'an edit reaches every cast the card is in',
+  characters.update(chr.id, { tagline: 'adopted' })?.tagline === 'adopted' &&
+    cast.listForStory(blank.id)[0]?.tagline === 'adopted',
+);
+
+/* A member adopted later appends, so the order a story shows is the order it cast
+   them in — the card's own home order is not the second story's business. */
+const elsewhere = stories.create({ title: 'Elsewhere' });
+const second = characters.create(elsewhere.id, { name: 'Second' });
+cast.add(blank.id, second.id);
+check('a later cast member appends', cast.listForStory(blank.id).map((card) => card.name).join(',') === 'Asper,Second');
+
+cast.remove(blank.id, chr.id);
+check('detaching leaves the card alone', characters.get(chr.id) !== null);
+check('detaching removes exactly one card', cast.listForStory(blank.id).map((card) => card.name).join(',') === 'Second');
+cast.remove(blank.id, second.id);
+check('detaching the last card empties the cast', cast.listForStory(blank.id).length === 0);
+check('detaching does not touch the home cast', cast.listForStory(story.id).map((card) => card.id).join(',') === chr.id);
 
 // --- prompt templates
 const template = templates.create({
@@ -255,7 +294,7 @@ const composed = compose(
   {
     story: stories.get(macroStory.id)!,
     scene: macroScene,
-    characters: characters.list(macroStory.id),
+    characters: cast.listForStory(macroStory.id),
     persona: voice,
     messages: [typed],
     loreHits: [],
@@ -295,14 +334,142 @@ check(
   composed.plan.warnings.some((warning) => warning.includes('{{user}}') && warning.includes('frozen prefix')),
 );
 
-// --- cascade delete still works through the split
-stories.remove(story.id);
-check('story delete cascades (foreign_keys ON)', messages.list(story.id).length === 0);
-// The card went with the story, so the chat that borrowed it must be gone too —
-// this is a two-hop cascade (stories -> characters -> stories) and the reason
-// `character_id` is a real foreign key rather than a bare id.
-check('deleting the story takes the card chats with it', chat ? stories.get(chat.id) === null : false);
-check('the chat turns went with it', chat ? messages.list(chat.id).length === 0 : false);
+/* --- deleting a story keeps what it authored -------------------------------
+   The two-hop cascade is gone on purpose. A story is a world, not a container
+   for its people: the cards outlive it (`home_story_id` goes NULL), and the
+   conversations built on them outlive it too, with the borrowed persona frozen
+   in so `{{user}}` does not silently become "Player" on a transcript the writer
+   already has. */
+const doomed = stories.create({ title: 'Doomed', contract: 'Obey {{user}}.' });
+scenes.create(doomed.id, { title: 'Opening' });
+const doomedPersona = personas.create(doomed.id, { name: 'The Mask', description: 'A borrowed face.', isDefault: true });
+stories.update(doomed.id, { personaId: doomedPersona.id });
+const survivor = characters.create(doomed.id, { name: 'Survivor', meta: { first_mes: 'Still here.' } });
+const traveler = characters.create(doomed.id, { name: 'Traveler' });
+const survivorStart = startChat(survivor.id);
+const survivorChat = survivorStart.kind === 'created' ? survivorStart.story : null;
+check('a chat borrows its home persona pool', survivorChat ? resolvePersona(survivorChat)?.name === 'The Mask' : false);
+check('the conversation owns no persona while its world exists', survivorChat ? personas.list(survivorChat.id).length === 0 : false);
+
+const removed = removeStoryPreservingCast(doomed.id);
+check('deleting a story reports the cards it kept', removed.cards.map((card) => card.name).sort().join(',') === 'Survivor,Traveler');
+check('deleting a story reports the conversations it kept', removed.chats.map((story) => story.title).join(',') === 'Survivor');
+check('the story itself is gone', stories.get(doomed.id) === null);
+check('its persona pool is gone', personas.list(doomed.id).length === 0);
+check('the card survived without a home', characters.get(survivor.id)?.homeStoryId === null);
+check('the conversation survived with its transcript', Boolean(
+  survivorChat && stories.get(survivorChat.id) !== null && messages.list(survivorChat.id).length === 1,
+));
+check('the conversation froze the persona it was using', Boolean(
+  survivorChat && resolvePersona(survivorChat)?.name === 'The Mask' && personas.list(survivorChat.id).length === 1,
+));
+check('frozen text is the text that was borrowed', Boolean(
+  survivorChat && resolvePersona(survivorChat)?.description === 'A borrowed face.',
+));
+
+/* A card with no home left can still be talked to — from a story that casts it,
+   which is the only kind of story that can vouch for a world. */
+check('a home-less card refuses to start a chat on its own', startChat(traveler.id).kind === 'orphan');
+check('a story that does not cast it refuses too', startChat(traveler.id, { fromStoryId: blank.id }).kind === 'orphan');
+const hostPersona = personas.create(blank.id, { name: 'Host', description: 'Borrowed on purpose.', isDefault: true });
+stories.update(blank.id, { personaId: hostPersona.id });
+cast.add(blank.id, traveler.id);
+const adopted = startChat(traveler.id, { fromStoryId: blank.id });
+const adoptedChat = adopted.kind === 'created' ? adopted.story : null;
+check('a story that casts it lends its world', adopted.kind === 'created' && adoptedChat?.characterId === traveler.id);
+check('the adopted conversation keeps the persona it started with', Boolean(
+  adoptedChat && resolvePersona(adoptedChat)?.name === 'Host' && personas.list(adoptedChat.id).length === 1,
+));
+check('an existing chat is handed back even without a world', (() => {
+  const again = startChat(survivor.id);
+  return again.kind === 'exists' && again.story.id === survivorChat?.id;
+})());
+
+// --- deleting a story still cascades its own children
+removeStoryPreservingCast(story.id);
+check('story delete cascades its own rows (foreign_keys ON)', messages.list(story.id).length === 0);
+check('the card outlives the story that authored it', characters.get(chr.id)?.homeStoryId === null);
+check('the cast of a deleted story is gone with it', cast.listForStory(story.id).length === 0);
+check('the conversation outlives its world', chat ? stories.get(chat.id) !== null : false);
+check('its greeting survived the delete', chat ? messages.list(chat.id).length === 1 : false);
+check('it now resolves the persona it was using, frozen in', chat ? resolvePersona(chat)?.name === per.name : false);
+
+/* The two shapes a delete hits most often: a story whose cards have no chat, and a
+   story with nothing in it at all. Both must be a clean no-op for the rescue. */
+const emptyStory = stories.create({ title: 'Nothing here' });
+scenes.create(emptyStory.id, { title: 'Opening' });
+const emptyRemoval = removeStoryPreservingCast(emptyStory.id);
+check('deleting an empty story reports nothing to keep', emptyRemoval.cards.length === 0 && emptyRemoval.chats.length === 0);
+check('deleting an empty story deletes it', stories.get(emptyStory.id) === null);
+
+const chatlessRemoval = removeStoryPreservingCast(elsewhere.id);
+check('deleting a story whose cards have no chats keeps the cards', chatlessRemoval.cards.map((card) => card.name).join(',') === 'Second');
+check('and those cards survive without a home', characters.get(second.id)?.homeStoryId === null);
+check('and their cast row in that story is gone', cast.listForStory(elsewhere.id).length === 0);
+
+/* --- v1 -> v2 migration -----------------------------------------------------
+   The rename is the one place this release touches data that already exists, so
+   it is pinned by hand: a real v1 file, opened by the real `openDatabase`. The
+   value must survive, the old CASCADE column must be gone, and the home cast
+   must be backfilled in the order it used to render in. */
+closeDatabase();
+const legacyPath = join(dir, 'legacy.sqlite');
+{
+  const legacy = new DatabaseSync(legacyPath);
+  legacy.exec(`
+    PRAGMA foreign_keys = ON;
+    CREATE TABLE stories (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE characters (
+      id               TEXT PRIMARY KEY,
+      story_id         TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      name             TEXT NOT NULL,
+      tagline          TEXT NOT NULL DEFAULT '',
+      description      TEXT NOT NULL DEFAULT '',
+      personality      TEXT NOT NULL DEFAULT '',
+      speech           TEXT NOT NULL DEFAULT '',
+      scenario         TEXT NOT NULL DEFAULT '',
+      example_dialogue TEXT NOT NULL DEFAULT '',
+      meta             TEXT NOT NULL DEFAULT '{}',
+      avatar           TEXT,
+      tokens           INTEGER NOT NULL DEFAULT 0,
+      sort_order       INTEGER NOT NULL DEFAULT 0,
+      created_at       INTEGER NOT NULL,
+      updated_at       INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS characters_story ON characters(story_id, sort_order);
+  `);
+  legacy.prepare('INSERT INTO stories (id, title, created_at, updated_at) VALUES (?,?,?,?)').run('s1', 'World', 1, 1);
+  legacy
+    .prepare('INSERT INTO characters (id, story_id, name, tokens, sort_order, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
+    .run('c1', 's1', 'Asper', 10, 3, 1, 1);
+  legacy.close();
+}
+openDatabase(legacyPath);
+const migrated = characters.get('c1');
+check('migration keeps the home story', migrated?.homeStoryId === 's1');
+check('migration keeps the card order', migrated?.order === 3);
+const characterColumns = (getDb().prepare('PRAGMA table_info(characters)').all() as { name: string }[]).map(
+  (column) => column.name,
+);
+check('migration drops the old cascading column', !characterColumns.includes('story_id'));
+check('migration makes the home nullable', characterColumns.includes('home_story_id'));
+const homeFk = (getDb().prepare('PRAGMA foreign_key_list(characters)').all() as { from: string; on_delete: string }[]).find(
+  (row) => row.from === 'home_story_id',
+);
+check('the home story no longer cascades', homeFk?.on_delete === 'SET NULL');
+check('migration backfills the home cast', cast.listForStory('s1').map((card) => card.id).join(',') === 'c1');
+check('migration leaves no dangling foreign keys', (getDb().prepare('PRAGMA foreign_key_check').all() as unknown[]).length === 0);
+
+/* The migration runs on every boot, so a second one must be a no-op rather than a
+   second copy of the membership or a lost home id. */
+closeDatabase();
+openDatabase(legacyPath);
+check('re-opening the database keeps the home story', characters.get('c1')?.homeStoryId === 's1');
+check('re-opening does not duplicate the membership', cast.all().filter((entry) => entry.characterId === 'c1').length === 1);
+check('re-opening leaves one row in the card table', characters.list().length === 1);
 
 const failed = checks.filter(([, ok]) => !ok);
 for (const [name, ok, detail] of checks) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`);

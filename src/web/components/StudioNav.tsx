@@ -33,7 +33,7 @@ export function StudioNav({ onNavigate, compact = false }: { onNavigate?: () => 
        the one row here that builds the story instead of reporting on it. It opens
        the cast *page*, not the payload rail's Cast section: a writer adding a
        person should not have to reach them through the request that carries them. */
-    { label: 'Cast', hint: 'the roster — characters and personas', icon: IconUsers, run: () => setPage('cast') },
+    { label: 'Cast', hint: 'your character library, and this story’s cast', icon: IconUsers, run: () => setPage('cast') },
     /* The ledger, not the command palette. The palette is a way to *reach* things
        — opening it from a row labelled "Cost & cache" made the row a second
        launcher for navigation rather than the destination it named. */

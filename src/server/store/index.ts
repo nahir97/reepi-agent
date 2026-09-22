@@ -14,7 +14,7 @@
 
 export { stories } from './stories.ts';
 export { scenes } from './scenes.ts';
-export { characters } from './characters.ts';
+export { characters, cast } from './characters.ts';
 export { personas } from './personas.ts';
 export { lore } from './lore.ts';
 export { messages } from './messages.ts';
@@ -32,7 +32,7 @@ export { type Row, num, str } from './rows.ts';
 
 export { hashContent } from '../../shared/ids.ts';
 
-import { characters } from './characters.ts';
+import { cast, characters } from './characters.ts';
 import { lore } from './lore.ts';
 import { memories } from './memories.ts';
 import { messages } from './messages.ts';
@@ -60,17 +60,31 @@ export function chatCharacterOf(story: Story): Character | null {
   return story.characterId ? characters.get(story.characterId) : null;
 }
 
-/** What the composer and the roster see: a chat's cast is one borrowed card. */
+/**
+ * What the composer and the roster see.
+ *
+ * A chat's cast is one borrowed card. An ordinary story's cast is its
+ * `story_cast` rows — not the cards whose home it is, which is the distinction
+ * this release exists to make: adopting a card puts it in *this* payload without
+ * taking it out of anyone else's.
+ */
 export function castOf(story: Story): Character[] {
-  if (!story.characterId) return characters.list(story.id);
+  if (!story.characterId) return cast.listForStory(story.id);
   const character = chatCharacterOf(story);
   return character ? [character] : [];
 }
 
-/** The story personas live in: a chat borrows the pool of the card's home story. */
+/**
+ * The story personas live in: a chat borrows the pool of the card's home story.
+ *
+ * A card whose home story was deleted has no pool to borrow, so the chat falls
+ * back to its *own* pool — which is where `chats.ts` froze the persona it was
+ * using when the home story went away. Without that freeze this fallback would
+ * silently resolve nothing and drop the persona block.
+ */
 export function personaHomeId(story: Story): string {
   if (!story.characterId) return story.id;
-  return chatCharacterOf(story)?.storyId ?? story.id;
+  return chatCharacterOf(story)?.homeStoryId ?? story.id;
 }
 
 export function personaPoolOf(story: Story): Persona[] {

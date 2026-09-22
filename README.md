@@ -212,6 +212,13 @@ click away and none of it is on the default screen.
   in the payload inspector. Each card has a full editor: portrait, name, tagline,
   description, personality, speech habits, scenario and example dialogue, with portraits
   shown beside every turn the character speaks.
+- **A character is a library object, not a story's property.** The page has two scopes:
+  **This story** is the payload roster, totalled in tokens; **Library** is every character you
+  have written, grouped by the story it came from. Any story can **add an existing character to
+  its cast** — a blank story is not a dead end — and that is a reference, not a copy, so editing
+  a card edits it in every story that casts it. Deleting a story keeps its characters and their
+  conversations: the cards outlive it, and a chat keeps the persona it was using. Personas stay
+  story-scoped, because "who am I here" is a question about the story.
 - **Click a character and you are talking to them.** A card's face opens a 1:1 chat — created
   on first use, reopened after that — and that chat is a real conversation: one borrowed card,
   its own transcript, its own cache prefix and cost. It inherits the story's world (contract,
@@ -348,6 +355,9 @@ POST /api/stories/:id/archivist → ArchivistResult
 POST /api/stories/:id/summarise → SummaryResult
 POST /api/stories/:id/conductor → ConductorResult      N drafts, one judge
 POST /api/characters/:id/chat   → Story                open or start their 1:1 chat
+GET  /api/characters            → CastIndex            every card, plus every cast membership
+POST /api/stories/:id/cast      → Character[]          adopt an existing card into a cast
+DELETE /api/stories/:id/cast/:characterId → { ok }     take it out, without deleting it
 GET  /api/templates             → PromptTemplate[]     built-ins first, then yours
 POST /api/templates             → PromptTemplate
 GET  /api/macros?storyId=       → MacroInfo[]          each macro's live value
@@ -385,7 +395,8 @@ src/
     macros.ts        what each macro means for a story, and the reference read model
     render.ts        cast / scene-state / thread renderers, shared by composer and macros
     templates.ts     the code-shipped starter templates (merged in, never seeded)
-    chats.ts         starting a character chat: the world it copies, the card it borrows
+    chats.ts         starting a character chat: the world it copies, the card it borrows,
+                     and the persona it freezes when that world is deleted
     lorebook.ts      keyword scan, budget packing, BM25 + term extraction
     orchestrator.ts  turn engine, trim hysteresis, calibration, ledger
     agents/          director / archivist / summariser / conductor / diagnose
@@ -410,7 +421,7 @@ src/
     api.ts           typed client + SSE frame reader
     components/
       Library.tsx        the conversation list and its day filing, shared by rail and sheet
-      CastPage.tsx       the cast roster: a page in the centre column, and the way into a chat
+      CastPage.tsx       the cast roster, this story's and the library's, and the way into a chat
       Sidebar.tsx        the library rail: band, list, scenes, studio theme
       StudioNav.tsx      cast / cost / settings / transfer / duplicate, one list for both hosts
       StoryActions.tsx   a story row's overflow menu, viewport-anchored

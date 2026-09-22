@@ -72,7 +72,14 @@ CREATE INDEX IF NOT EXISTS scenes_story ON scenes(story_id, archived, sort_order
 
 CREATE TABLE IF NOT EXISTS characters (
   id               TEXT PRIMARY KEY,
-  story_id         TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+  /*
+   * The story that authored the card — its home, not its cast. ON DELETE SET
+   * NULL rather than CASCADE on purpose: a character is a library object, so
+   * deleting the story it came from must not delete the character. Cards that
+   * lose their home keep working: they stay cast wherever they are cast, and
+   * story_cast is what decides whose payload they are in.
+   */
+  home_story_id    TEXT REFERENCES stories(id) ON DELETE SET NULL,
   name             TEXT NOT NULL,
   tagline          TEXT NOT NULL DEFAULT '',
   description      TEXT NOT NULL DEFAULT '',
@@ -87,7 +94,23 @@ CREATE TABLE IF NOT EXISTS characters (
   created_at       INTEGER NOT NULL,
   updated_at       INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS characters_story ON characters(story_id, sort_order);
+
+/*
+ * Which stories a card is cast in. One row per story per card, so a card has
+ * one definition and many casts — the same rule a chat already uses to borrow
+ * its card. The home story gets a row at creation (see characters.create),
+ * which is what keeps castOf behaving exactly as it did before this table.
+ *
+ * No row is written for a chat: a chat's cast IS stories.character_id, and a
+ * second source for that fact would be the first thing to drift.
+ */
+CREATE TABLE IF NOT EXISTS story_cast (
+  story_id     TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+  character_id TEXT NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  created_at   INTEGER NOT NULL,
+  PRIMARY KEY (story_id, character_id)
+);
 
 CREATE TABLE IF NOT EXISTS personas (
   id          TEXT PRIMARY KEY,
@@ -266,6 +289,14 @@ const ADDITIVE_MIGRATIONS: { table: string; column: string; ddl: string }[] = [
     column: 'character_id',
     ddl: 'TEXT REFERENCES characters(id) ON DELETE CASCADE',
   },
+  /* v2: a character's story becomes a *home* — nullable, and no longer a delete
+     cascade. The copy of the old `story_id` into it happens below, because
+     `ALTER TABLE ADD COLUMN` is the only half SQLite can do on its own. */
+  {
+    table: 'characters',
+    column: 'home_story_id',
+    ddl: 'TEXT REFERENCES stories(id) ON DELETE SET NULL',
+  },
 ];
 
 /**
@@ -279,7 +310,55 @@ const ADDITIVE_MIGRATIONS: { table: string; column: string; ddl: string }[] = [
 const POST_MIGRATION_INDEXES = `
 CREATE UNIQUE INDEX IF NOT EXISTS stories_character_id
   ON stories(character_id) WHERE character_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS characters_story ON characters(home_story_id, sort_order);
+CREATE INDEX IF NOT EXISTS story_cast_character ON story_cast(character_id);
 `;
+
+/**
+ * v1 `characters.story_id` → v2 `characters.home_story_id`.
+ *
+ * The *value* is the whole point, so it moves through the new column before the
+ * old one is dropped: dropping and re-adding a column under the same name is
+ * exactly how a database loses every character's story without ever failing.
+ * `story_id` then has to go, because its `ON DELETE CASCADE` is the behaviour
+ * this release removes — leaving it in place would delete the card, and its
+ * memberships, the moment the home story was deleted.
+ *
+ * Guarded by the presence of the old column, so it is a no-op on a fresh file
+ * and on every boot after the first.
+ */
+function replaceLegacyHomeColumn(handle: DatabaseSync): void {
+  const columns = handle.prepare('PRAGMA table_info(characters)').all() as { name: string }[];
+  if (columns.length === 0) return; // table created by DDL with the new shape
+  if (!columns.some((column) => column.name === 'story_id')) return;
+
+  handle.exec('UPDATE characters SET home_story_id = story_id WHERE home_story_id IS NULL');
+  // The old index names the column, so it has to go before the column does.
+  handle.exec('DROP INDEX IF EXISTS characters_story');
+  handle.exec('ALTER TABLE characters DROP COLUMN story_id');
+  console.log('[reepi] migrated characters.story_id -> home_story_id');
+}
+
+/**
+ * Give every card a membership row for its home story.
+ *
+ * Before this table existed, "cast" *was* "the rows whose `story_id` is this
+ * story", so the backfill has to reproduce that exactly — including the order,
+ * which is bytes in the cast block and therefore in the cache prefix. Idempotent
+ * and cheap, so it runs unconditionally: after the first boot the subquery finds
+ * nothing.
+ */
+function backfillHomeCast(handle: DatabaseSync): void {
+  handle.exec(`
+    INSERT INTO story_cast (story_id, character_id, sort_order, created_at)
+    SELECT c.home_story_id, c.id, c.sort_order, c.created_at FROM characters c
+    WHERE c.home_story_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM story_cast sc
+        WHERE sc.character_id = c.id AND sc.story_id = c.home_story_id
+      )
+  `);
+}
 
 function migrate(handle: DatabaseSync): void {
   for (const migration of ADDITIVE_MIGRATIONS) {
@@ -293,6 +372,8 @@ function migrate(handle: DatabaseSync): void {
     handle.exec(`ALTER TABLE ${migration.table} ADD COLUMN ${migration.column} ${migration.ddl}`);
     console.log(`[reepi] migrated ${migration.table}.${migration.column}`);
   }
+  replaceLegacyHomeColumn(handle);
+  backfillHomeCast(handle);
   handle.exec(POST_MIGRATION_INDEXES);
 }
 

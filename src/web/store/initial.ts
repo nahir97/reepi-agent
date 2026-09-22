@@ -73,6 +73,10 @@ export function initialState(): Omit<
   | 'archiveScene'
   | 'createCard'
   | 'startChatWith'
+  | 'loadCastLibrary'
+  | 'refreshCastLibrary'
+  | 'addToCast'
+  | 'removeFromCast'
   | 'setRightTab'
   | 'setRailOpen'
   | 'setPage'
@@ -113,6 +117,8 @@ export function initialState(): Omit<
     activeStoryId: null,
     activeSceneId: null,
     bundle: null,
+    castLibrary: null,
+    castLibraryError: null,
     loadingBundle: false,
     booted: false,
     offline: null,

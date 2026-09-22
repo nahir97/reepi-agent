@@ -169,8 +169,11 @@ function Field({
 
 function CharacterEditor({ character }: { character: Character }) {
   const stories = useStore((state) => state.stories);
+  const activeStoryId = useStore((state) => state.activeStoryId);
+  const castLibrary = useStore((state) => state.castLibrary);
   const loadStories = useStore((state) => state.loadStories);
   const refreshBundle = useStore((state) => state.refreshBundle);
+  const refreshCastLibrary = useStore((state) => state.refreshCastLibrary);
   const fail = useStore((state) => state.fail);
   const toast = useStore((state) => state.toast);
   const openDialog = useStore((state) => state.openDialog);
@@ -179,6 +182,7 @@ function CharacterEditor({ character }: { character: Character }) {
     try {
       await api.characters.update(character.id, patch);
       await refreshBundle({ quiet: true });
+      await refreshCastLibrary();
     } catch (error) {
       fail(error, 'Could not save the card');
     }
@@ -189,15 +193,27 @@ function CharacterEditor({ character }: { character: Character }) {
        confirm has to say so — by name, because "your chat with Cantarella" is
        something a writer recognises and "any related chats" is not. */
     const chats = stories.filter((story) => story.characterId === character.id);
+    /* A card can be cast in stories this one never opened, and deleting it takes
+       it out of all of them — so the confirm names those too. The library read
+       model is the only place that knows them. */
+    const elsewhere = (castLibrary?.casts ?? [])
+      .filter((entry) => entry.characterId === character.id && entry.storyId !== activeStoryId)
+      .map((entry) => stories.find((story) => story.id === entry.storyId)?.title)
+      .filter((title): title is string => Boolean(title));
+    const leaves = (body: string): string =>
+      elsewhere.length > 0
+        ? `${body} It also leaves the cast of ${elsewhere.map((title) => `“${title}”`).join(', ')}.`
+        : body;
     openDialog({
       kind: 'confirm',
       title: `Delete ${character.name}?`,
-      body:
+      body: leaves(
         chats.length > 0
-          ? `The card leaves the payload and the cast list, and the chat with them goes with it: ${chats
+          ? `The card leaves this payload and the cast list, and the chat with them goes with it: ${chats
               .map((chat) => `“${chat.title}”`)
               .join(', ')}. Their turns in this story's transcript stay where they are.`
-          : 'The card leaves the payload and the cast list. Their turns in the transcript stay where they are.',
+          : 'The card leaves this payload and every cast it was in. Their turns in the transcript stay where they are.',
+      ),
       confirmLabel: 'Delete character',
       danger: true,
       run: () => {
@@ -205,6 +221,7 @@ function CharacterEditor({ character }: { character: Character }) {
           try {
             const result = await api.characters.remove(character.id);
             await refreshBundle({ quiet: true });
+            await refreshCastLibrary();
             await loadStories().catch(() => undefined);
             toast({
               kind: 'ok',
