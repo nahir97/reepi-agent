@@ -110,7 +110,14 @@ function insertBundle(
   seed: BundleSeed,
   overrides: Partial<Story> = {},
 ): StoryBundle {
-  const created = stories.create({ ...seed.story, ...overrides, personaId: null });
+  /*
+   * `characterId: null` is load-bearing on both paths. A duplicated or imported
+   * bundle must not carry a reference to a card id that does not exist in this
+   * database; the copy's own characters are real rows inserted below. So
+   * duplicating a chat yields a standalone story with its own copy of the card,
+   * and importing an exported chat does the same.
+   */
+  const created = stories.create({ ...seed.story, ...overrides, personaId: null, characterId: null });
 
   const sceneIds: Record<string, string> = {};
   const copiedScenes: Scene[] = [];

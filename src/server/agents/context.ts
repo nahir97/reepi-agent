@@ -20,7 +20,7 @@ import type {
   Story,
 } from '../../shared/types.ts';
 import type { ChatResult } from '../deepseek.ts';
-import { ledger, personas, scenes, stories } from '../store/index.ts';
+import { ledger, resolvePersona, scenes, stories } from '../store/index.ts';
 
 export const SIDE_EFFORT: ReasoningEffort = 'none';
 
@@ -108,7 +108,7 @@ export function activeScene(storyId: string) {
 export function personaNameFor(storyId: string): string {
   const story = stories.get(storyId);
   if (!story) return 'Player';
-  const list = personas.list(storyId);
-  const chosen = story.personaId ? list.find((persona) => persona.id === story.personaId) : undefined;
-  return chosen?.name ?? list[0]?.name ?? 'Player';
+  /* Same resolution the payload uses, so an agent prompt can never name a
+     different player than the one the model was told it is. */
+  return resolvePersona(story)?.name ?? 'Player';
 }

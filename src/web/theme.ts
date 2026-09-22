@@ -30,10 +30,21 @@ export const THEME_DOT: Record<Theme, string> = {
   daylight: 'linear-gradient(90deg, #f6f1e7, #96551a)',
 };
 
-/** The vertical spine on a library row, keyed to that story's own theme. */
-export const THEME_COVER: Record<Theme, string> = {
-  ink: 'linear-gradient(150deg, #d9a44c, #6b4a1f)',
-  ember: 'linear-gradient(150deg, #e2893c, #7a2f1c)',
-  verdant: 'linear-gradient(150deg, #6cc4a1, #1d4a38)',
-  daylight: 'linear-gradient(150deg, #96551a, #d9c3a0)',
+/**
+ * A story's portrait: the ground it is drawn on, and the ink that reads on it.
+ *
+ * Both are literals rather than `var(--accent-ink)`/`var(--text)`, for the same
+ * reason the swatch gradients are: the portrait shows a theme the writer may not
+ * be *in*. A story keeps the theme it was written under, so a `daylight` story
+ * listed while the studio sits in `ink` needs ink that reads on parchment — a
+ * live custom property would have supplied near-white on near-white.
+ *
+ * One entry, two values, so the pair cannot drift apart in two call sites the
+ * way two parallel tables would.
+ */
+export const THEME_COVER: Record<Theme, { ground: string; ink: string }> = {
+  ink: { ground: 'linear-gradient(150deg, #d9a44c, #6b4a1f)', ink: '#1b1206' },
+  ember: { ground: 'linear-gradient(150deg, #e2893c, #7a2f1c)', ink: '#1e0f04' },
+  verdant: { ground: 'linear-gradient(150deg, #6cc4a1, #1d4a38)', ink: '#05130d' },
+  daylight: { ground: 'linear-gradient(150deg, #96551a, #d9c3a0)', ink: '#fdf8ef' },
 };

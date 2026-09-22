@@ -7,7 +7,7 @@ import type { DirectorNote } from '../../../shared/types.ts';
 import { api } from '../../api.ts';
 import { useStore } from '../../store.ts';
 import { Card, SectionTitle } from '../panel.tsx';
-import { IconCheck, IconNote, IconSpark, IconTrash, IconUsers, IconWand } from '../icons.tsx';
+import { IconCheck, IconChevronDown, IconNote, IconSpark, IconTrash, IconUsers, IconWand } from '../icons.tsx';
 import { DraftField } from './shared.tsx';
 
 /* ---------------------------------------------------------------- director */
@@ -42,9 +42,21 @@ export function DirectorTab() {
 
   return (
     <div>
-      <SectionTitle title="Agentic passes" hint="separate contexts, never in the narration payload" />
-      <Card>
-        <p className="mb-2 text-[10.5px] leading-snug text-faint">
+      {/* The passes are four buttons reached rarely; the notes are the section's
+          actual content. Folded, the passes cost one line and a click, and the
+          prose explanation the writer reads once no longer sits above every visit
+          to the notes they read constantly. */}
+      <details className="card mb-2 p-2.5" style={{ background: 'var(--panel-raised)' }}>
+        <summary className="flex cursor-pointer list-none items-center gap-2 select-none">
+          <span className="eyebrow shrink-0">Agentic passes</span>
+          <span className="min-w-0 flex-1 truncate text-[10.5px] text-faint">
+            separate contexts, never in the narration payload
+          </span>
+          <span className="shrink-0 text-faint">
+            <IconChevronDown size={12} />
+          </span>
+        </summary>
+        <p className="mt-2 mb-2 text-[10.5px] leading-snug text-faint">
           Each pass runs in its own short-lived thread and hands back a tiny durable artefact. Paying for a summary
           once and reusing it across fifty turns is strictly cheaper than re-deriving continuity inside all fifty —
           and none of it touches the narrator's cache prefix.
@@ -54,7 +66,7 @@ export function DirectorTab() {
             <div key={pass.id} className="flex items-center gap-2">
               <button
                 type="button"
-                className="btn"
+                className="btn shrink-0"
                 style={{ padding: '0.3rem 0.55rem' }}
                 disabled={busy !== null}
                 onClick={() => void runAgentic(pass.id)}
@@ -65,7 +77,7 @@ export function DirectorTab() {
             </div>
           ))}
         </div>
-      </Card>
+      </details>
 
       <SectionTitle title="Notes" hint={`${notes.length} filed · ${notes.filter((note) => !note.accepted).length} pending`} />
 

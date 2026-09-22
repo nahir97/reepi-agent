@@ -123,15 +123,23 @@ app.get('*', serveStatic({ path: join(DIST, 'index.html') }));
  * story, but stories created before that behaviour existed (or imported by hand
  * into the database) could open onto an unusable editor. Cheap to check, and it
  * runs once.
+ *
+ * A character chat is skipped for the persona half: it owns no personas, it
+ * borrows its pool from the story the card lives in, so minting one here would
+ * create an orphan row nothing ever reads. It still gets a scene if one is
+ * missing — a chat is a normal story in every other respect.
  */
 function repairStories(): void {
-  const rows = getDb().prepare('SELECT id FROM stories').all() as { id: string }[];
+  const rows = getDb().prepare('SELECT id, character_id FROM stories').all() as {
+    id: string;
+    character_id: string | null;
+  }[];
   for (const row of rows) {
     if (scenes.list(row.id).length === 0) {
       scenes.create(row.id, { title: 'Opening' });
       console.log(`[reepi] added a missing opening scene to story ${row.id}`);
     }
-    if (personas.list(row.id).length === 0) {
+    if (!row.character_id && personas.list(row.id).length === 0) {
       personas.create(row.id, { name: 'You', isDefault: true });
     }
   }

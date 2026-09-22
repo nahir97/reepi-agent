@@ -442,6 +442,18 @@ function metaString(meta: Record<string, unknown>, key: string): string | null {
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
+/**
+ * The line a card opens with, wherever it lives.
+ *
+ * An imported card carries it in `meta.first_mes`; a card written here has it as
+ * the story's opening `greeting` message. One definition, because two readers need
+ * it and they must agree: the export path below has to put the line back on the
+ * card, and starting a character chat seeds the same line into the new transcript.
+ */
+export function greetingOf(character: Character): string {
+  return metaString(character.meta, 'first_mes') ?? '';
+}
+
 /** Card → domain. The raw card rides along in `meta` so nothing is lost. */
 export function cardToCharacter(card: CharacterCardV2): CardCharacter {
   const data = card.data;
@@ -528,7 +540,7 @@ export function characterToCard(character: Character, story: Story): CharacterCa
   // as its opening assistant message. Either way the card must carry it, or the
   // card that goes out loses the line that opened the scene.
   const greeting = messages.list(story.id).find((message) => message.origin === 'greeting');
-  const firstMes = metaString(meta, 'first_mes') ?? greeting?.variants[greeting.activeVariant] ?? '';
+  const firstMes = greetingOf(character) || greeting?.variants[greeting.activeVariant] || '';
 
   return {
     spec: 'chara_card_v2',

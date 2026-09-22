@@ -33,6 +33,10 @@
   /* Reading measure and rhythm, used by the prose renderer. */
   --measure: 68ch;
 
+  /* The height of every chrome band — library rail, app header, payload rail,
+     drawer headers. One number, so the divider lines meet across columns. */
+  --topbar-h: 3.5rem;
+
   /* Motion. */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -320,6 +324,21 @@ html[data-theme='daylight'] {
 /* ------------------------------------------------------------- components */
 
 @layer components {
+  /* One chrome band. Every column's top strip — the library rail, the app header,
+     the payload rail, the drawer headers — is exactly this tall, so the divider
+     under them is one continuous line across the window instead of three
+     different ones. */
+  .topbar {
+    display: flex;
+    align-items: center;
+    flex: none;
+    /* `min-height`, not `height`: on a notched phone `pt-safe` adds the inset
+       above, and a fixed height would squeeze the band's content into what is
+       left. Below `lg` only the app header exists, so the two bands cannot
+       disagree about their position there. */
+    min-height: var(--topbar-h);
+  }
+
   /* Section headings: letterspaced small caps, the editorial voice. */
   .eyebrow {
     font-family: var(--font-sans);
@@ -738,32 +757,6 @@ html[data-theme='daylight'] {
     background: var(--accent-soft);
   }
 
-  .tab {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3125rem;
-    padding: 0.4rem 0.15rem 0.5rem;
-    font-size: 11.5px;
-    font-weight: 550;
-    color: var(--text-faint);
-    background: none;
-    border: none;
-    border-bottom: 1.5px solid transparent;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: color 130ms var(--ease-out-soft);
-  }
-
-  .tab:hover {
-    color: var(--text);
-  }
-
-  .tab[aria-selected='true'] {
-    color: var(--text);
-    border-bottom-color: var(--accent);
-  }
-
   .switch {
     position: relative;
     display: inline-flex;
@@ -839,7 +832,7 @@ html[data-theme='daylight'] {
   flex: 0 0 auto;
 }
 
-/* Safe-area padding for the mobile composer and tab bar. */
+/* Safe-area padding for the mobile composer and the top bands. */
 @utility pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }

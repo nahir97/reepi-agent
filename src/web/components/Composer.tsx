@@ -18,6 +18,7 @@ import { EFFORT_LABELS, MODELS } from '../../shared/types.ts';
 import type { ChatRequest, ModelId, ReasoningEffort } from '../../shared/types.ts';
 import { useStore } from '../store.ts';
 import { CacheMeter, CachePill, cacheSafetySentence } from './CacheMeter.tsx';
+import { PersonaSwitch } from './PersonaSwitch.tsx';
 import { IconAlert, IconClose, IconFeather, IconNote, IconSend, IconSettings, IconStop } from './icons.tsx';
 
 const EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'max'];
@@ -137,11 +138,19 @@ export function Composer() {
       style={{ background: 'var(--panel)' }}
       aria-label="Composer"
     >
-      <div className="mx-auto w-full max-w-[48rem] px-3 pt-2.5 pb-3 sm:px-6">
+      {/* The same measure as the transcript's column, so the composer's edge and
+          the prose's edge are one line. They were 48rem against 52rem, which put
+          the writing surface 16px inside the text it was writing. */}
+      <div className="mx-auto w-full max-w-[52rem] px-3 pt-2.5 pb-3 sm:px-6">
         {/* One pill. The payload analysis is real and worth having, but it is not
-            worth reading while you are mid-sentence — so it opens on demand. */}
-        <div className="mb-2 flex items-center gap-2">
+            worth reading while you are mid-sentence — so it opens on demand. The
+            persona beside it is the exception the rule allows: it is the speaker
+            of the turn being written, not a figure about the request. The row
+            wraps rather than squeezes: on a 320px phone the persona chip would
+            otherwise be compressed under its own label. */}
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           <CachePill plan={plan} busy={planBusy} open={meterOpen} onToggle={() => setMeterOpen((value) => !value)} />
+          <PersonaSwitch />
           {safety ? (
             <span
               className="hidden min-w-0 items-center gap-1.5 truncate text-[11px] sm:flex"

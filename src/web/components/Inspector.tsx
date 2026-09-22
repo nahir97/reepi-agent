@@ -1,99 +1,121 @@
 /**
  * The inspector: everything that feeds the payload, and nothing that does not.
  *
- * The tab order is the payload order — Blocks, then Cast, Persona, Lore, Memory,
- * Scene, Director. Reading the panel top to bottom is reading the request top to
- * bottom, which is the only way the cache discipline becomes legible.
+ * It is a **drill-down, not a tab strip**. The front page is `InspectMenu` — one
+ * row per section, each carrying its own live summary — and choosing a row opens
+ * that section with a back control in place of the title. The band above is
+ * always exactly one band: *Inspect* with a close on the menu, the section's name
+ * and summary with a back once one is open.
  *
- * Every edit here is explicit: the text fields hold a local draft and commit on
- * **Apply to payload**, because touching a frozen block is a decision the writer
- * should make deliberately rather than by keystroke.
+ * Two reasons the rail works this way and the phone's sheet reaches the same
+ * sections as flat rows: the rail is 21rem and permanently on screen, so a
+ * seven-tab strip there was a wall of abbreviations in the narrowest column in
+ * the app; and a menu row has room to say what the section currently contains,
+ * which a tab cannot. The sheet lists the payload sections only, and reaches the
+ * cast through the studio list's `Cast` page rather than through rows named for
+ * the people it holds. The section order here is payload order — Blocks, then
+ * Cast, Persona, Lore, Memory, Scene, Director — so reading the menu top to
+ * bottom is reading the request top to bottom, which is the only way the cache
+ * discipline becomes legible.
  *
- * This file is the chrome only. Each tab lives in `./inspector/`, one module per
- * payload section.
+ * This file is the chrome only. Each section lives in one module under
+ * `./inspector/`.
  */
 
-import { useStore, type RightTab } from '../store.ts';
+import { useStore } from '../store.ts';
 import { BlocksTab } from './inspector/blocks.tsx';
 import { CastTab } from './inspector/cast.tsx';
+import { InspectMenu, SECTION_LABEL, useSectionSummary } from './inspector/menu.tsx';
 import { PersonaTab } from './inspector/persona.tsx';
 import { LoreTab } from './inspector/lore.tsx';
 import { MemoryTab } from './inspector/memory.tsx';
 import { SceneTab } from './inspector/scene.tsx';
 import { DirectorTab } from './inspector/director.tsx';
+import { IconChevronRight, IconClose } from './icons.tsx';
 
-const TABS: { id: RightTab; label: string }[] = [
-  { id: 'blocks', label: 'Blocks' },
-  { id: 'cast', label: 'Cast' },
-  { id: 'persona', label: 'Persona' },
-  { id: 'lore', label: 'Lore' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'scene', label: 'Scene' },
-  { id: 'director', label: 'Director' },
-];
-
-export function Inspector() {
-  const tab = useStore((state) => state.ui.rightTab);
-  const setTab = useStore((state) => state.setRightTab);
+export function Inspector({ onClose }: { onClose?: () => void }) {
+  const view = useStore((state) => state.ui.rightTab);
+  const setView = useStore((state) => state.setRightTab);
   const bundle = useStore((state) => state.bundle);
-  const openDialog = useStore((state) => state.openDialog);
+  const open = view !== null;
+
+  /* One band, in both states — so opening a section replaces the title rather
+     than stacking a second bar under it. */
+  const band = (
+    <div className="topbar pt-safe shrink-0 gap-1.5 border-b border-border px-2">
+      {open ? (
+        <button
+          type="button"
+          className="icon-btn shrink-0"
+          style={{ width: 26, height: 26 }}
+          onClick={() => setView(null)}
+          aria-label="Back to the section menu"
+        >
+          <span className="inline-block rotate-180">
+            <IconChevronRight size={13} />
+          </span>
+        </button>
+      ) : null}
+      <SectionTitleInline />
+      {onClose ? (
+        <button type="button" className="icon-btn ml-auto shrink-0" onClick={onClose} aria-label="Hide the payload inspector">
+          <IconClose size={13} />
+        </button>
+      ) : null}
+    </div>
+  );
+
+  if (!bundle) {
+    return (
+      <div className="flex h-full min-h-0 flex-col" style={{ background: 'var(--panel)' }}>
+        {band}
+        <p className="p-3 text-[12px] text-faint">Open a story to inspect its payload.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col" style={{ background: 'var(--panel)' }}>
-      <div
-        className="hide-scrollbar flex shrink-0 items-center gap-4 overflow-x-auto border-b border-border px-3"
-        role="tablist"
-        aria-label="Inspector sections"
-      >
-        {TABS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            id={`tab-${entry.id}`}
-            aria-selected={tab === entry.id}
-            aria-controls={`panel-${entry.id}`}
-            className="tab"
-            onClick={() => setTab(entry.id)}
-          >
-            {entry.label}
-            {entry.id === 'director' && bundle && bundle.notes.filter((note) => !note.accepted).length > 0 ? (
-              <span className="num rounded-full px-1 text-[9px]" style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}>
-                {bundle.notes.filter((note) => !note.accepted).length}
-              </span>
-            ) : null}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="tab ml-auto shrink-0"
-          onClick={() => openDialog({ kind: 'insights' })}
-          title="Spend, savings, hit rate and the peak clock"
-        >
-          Cost
-        </button>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-3" id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
-        {!bundle ? (
-          <p className="text-[12px] text-faint">Open a story to inspect its payload.</p>
-        ) : tab === 'blocks' ? (
-          <BlocksTab />
-        ) : tab === 'cast' ? (
-          <CastTab />
-        ) : tab === 'persona' ? (
-          <PersonaTab />
-        ) : tab === 'lore' ? (
-          <LoreTab />
-        ) : tab === 'memory' ? (
-          <MemoryTab />
-        ) : tab === 'scene' ? (
-          <SceneTab />
-        ) : (
-          <DirectorTab />
-        )}
-      </div>
+      {band}
+      {open ? (
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {view === 'blocks' ? (
+            <BlocksTab />
+          ) : view === 'cast' ? (
+            <CastTab />
+          ) : view === 'persona' ? (
+            <PersonaTab />
+          ) : view === 'lore' ? (
+            <LoreTab />
+          ) : view === 'memory' ? (
+            <MemoryTab />
+          ) : view === 'scene' ? (
+            <SceneTab />
+          ) : (
+            <DirectorTab />
+          )}
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <InspectMenu />
+        </div>
+      )}
     </div>
   );
 }
 
+/**
+ * The band's text: the section's name and its live summary when one is open,
+ * `Inspect` when not. `InspectMenu` owns the summary strings so a section's
+ * heading and its menu row can never disagree.
+ */
+function SectionTitleInline() {
+  const view = useStore((state) => state.ui.rightTab);
+  const summary = useSectionSummary(view);
+  return (
+    <span className="min-w-0 flex-1">
+      <span className="eyebrow block truncate">{view === null ? 'Inspect' : SECTION_LABEL[view]}</span>
+      <span className="num block truncate text-[10px] text-faint">{summary}</span>
+    </span>
+  );
+}

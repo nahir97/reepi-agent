@@ -22,6 +22,7 @@ function toStory(row: Row): Story {
     exemplars: str(row.exemplars),
     instruct: str(row.instruct),
     personaId: row.persona_id === null ? null : str(row.persona_id),
+    characterId: row.character_id === null || row.character_id === undefined ? null : str(row.character_id),
     model: str(row.model, 'deepseek-flash') as ModelId,
     effort: str(row.effort, 'none') as ReasoningEffort,
     temperature: num(row.temperature, 1),
@@ -68,6 +69,7 @@ export const stories = {
       exemplars: init.exemplars ?? '',
       instruct: init.instruct ?? '',
       personaId: init.personaId ?? null,
+      characterId: init.characterId ?? null,
       model: init.model ?? 'deepseek-flash',
       effort: init.effort ?? 'none',
       temperature: init.temperature ?? 1,
@@ -89,14 +91,15 @@ export const stories = {
       .prepare(
         `INSERT INTO stories (
            id, title, genre, scenario, bible, style, exemplars, instruct, persona_id,
-           model, effort, temperature, top_p, max_tokens, target_words, contract,
+           character_id, model, effort, temperature, top_p, max_tokens, target_words, contract,
            lore_budget, history_budget, prefill, theme, cover, synopsis, created_at, updated_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         story.id, story.title, story.genre, story.scenario, story.bible, story.style,
-        story.exemplars, story.instruct, story.personaId, story.model, story.effort,
-        story.temperature, story.topP, story.maxTokens, story.targetWords, story.contract,
+        story.exemplars, story.instruct, story.personaId, story.characterId, story.model,
+        story.effort, story.temperature, story.topP, story.maxTokens, story.targetWords,
+        story.contract,
         story.loreBudget, story.historyBudget, story.prefill, story.theme, story.cover,
         story.synopsis, story.createdAt, story.updatedAt,
       );
@@ -113,19 +116,39 @@ export const stories = {
       .prepare(
         `UPDATE stories SET
            title=?, genre=?, scenario=?, bible=?, style=?, exemplars=?, instruct=?, persona_id=?,
-           model=?, effort=?, temperature=?, top_p=?, max_tokens=?, target_words=?, contract=?,
+           character_id=?, model=?, effort=?, temperature=?, top_p=?, max_tokens=?, target_words=?,
+           contract=?,
            lore_budget=?, history_budget=?, prefill=?, theme=?, cover=?, synopsis=?, updated_at=?
          WHERE id=?`,
       )
       .run(
         merged.title, merged.genre, merged.scenario, merged.bible, merged.style,
-        merged.exemplars, merged.instruct, merged.personaId, merged.model, merged.effort,
-        merged.temperature, merged.topP, merged.maxTokens, merged.targetWords, merged.contract,
+        merged.exemplars, merged.instruct, merged.personaId, merged.characterId, merged.model,
+        merged.effort, merged.temperature, merged.topP, merged.maxTokens, merged.targetWords,
+        merged.contract,
         merged.loreBudget, merged.historyBudget, merged.prefill, merged.theme, merged.cover,
         merged.synopsis, merged.updatedAt, id,
       );
 
     return merged;
+  },
+
+  /** The chat started from this card, if the writer has one. At most one exists. */
+  chatFor(characterId: string): Story | null {
+    const row = getDb().prepare('SELECT * FROM stories WHERE character_id = ?').get(characterId) as
+      | Row
+      | undefined;
+    return row ? toStory(row) : null;
+  },
+
+  /** Chats started from any of these cards. Used to report a cascade before it runs. */
+  chatsForCharacters(characterIds: readonly string[]): Story[] {
+    if (characterIds.length === 0) return [];
+    const placeholders = characterIds.map(() => '?').join(',');
+    const rows = getDb()
+      .prepare(`SELECT * FROM stories WHERE character_id IN (${placeholders}) ORDER BY updated_at DESC`)
+      .all(...characterIds) as Row[];
+    return rows.map(toStory);
   },
 
   remove(id: string): void {

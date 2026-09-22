@@ -19,14 +19,14 @@ import type {
   Story,
 } from '../shared/types.ts';
 import {
-  characters,
+  castOf,
   ledger,
   lore,
   memories,
   messages,
   notes,
-  personas,
   prefixes,
+  resolvePersona,
   scenes,
   settings,
   stories,
@@ -262,8 +262,8 @@ function buildComposerInput(args: ComposerArgs): ComposerInput {
   return {
     story,
     scene: args.scene,
-    characters: characters.list(story.id),
-    persona: choosePersona(story.id, story.personaId),
+    characters: castOf(story),
+    persona: resolvePersona(story),
     messages: args.history,
     loreHits: args.resolved,
     recall: args.recall,
@@ -389,7 +389,9 @@ export async function runTurn(request: ChatRequest, options: TurnOptions): Promi
       variants: [''],
       reasoning: [''],
       origin,
-      speaker: null,
+      // An impersonated turn is the *writer* speaking as the character, so it
+      // stays unattributed and resolves to their persona like any other.
+      speaker: request.mode === 'impersonate' ? null : narratorSpeaker(story),
       injections: payload.plan.loreHits,
     });
     targetId = created.id;
@@ -629,13 +631,16 @@ function finalise(args: FinaliseArgs): void {
 
 /* ---------------------------------------------------------------- helpers */
 
-function choosePersona(storyId: string, personaId: string | null) {
-  const list = personas.list(storyId);
-  if (personaId) {
-    const chosen = list.find((persona) => persona.id === personaId);
-    if (chosen) return chosen;
-  }
-  return list.find((persona) => persona.isDefault) ?? list[0] ?? null;
+/**
+ * Who a freshly written assistant turn belongs to.
+ *
+ * In an ensemble story the narrator is the narrator, and `speaker: null` renders
+ * as such (the writer can re-attribute any turn). In a character chat the narrator
+ * *is* the character — the payload holds exactly one card — so every turn wears
+ * that card's name and portrait instead of a wall of unattributed prose.
+ */
+function narratorSpeaker(story: Story): string | null {
+  return story.characterId ? (castOf(story)[0]?.name ?? null) : null;
 }
 
 /**

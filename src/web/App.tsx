@@ -12,7 +12,7 @@
  * inspector rail on a large screen and behind the story button on a small one.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { TEMPLATES, type StoryTemplateId } from '../shared/api.ts';
 import { useStore } from './store.ts';
 import { Sidebar } from './components/Sidebar.tsx';
@@ -22,26 +22,12 @@ import { Inspector } from './components/Inspector.tsx';
 import { AppHeader, NavSheet } from './components/MobileBar.tsx';
 import { CardEditorDialog, InsightsDialog } from './components/editors.tsx';
 import { ConfirmDialog, ImportExportDialog, NewStoryDialog, StorySettingsDialog } from './components/modals.tsx';
+import { CastPage } from './components/CastPage.tsx';
 import { Toasts } from './components/toast.tsx';
 import { CommandPalette } from './components/palette.tsx';
-import { IconClose, IconFeather, IconPanelRight, IconPlus, IconSearch } from './components/icons.tsx';
+import { IconFeather, IconPanelRight, IconPlus, IconSearch } from './components/icons.tsx';
 
 const TEMPLATE_IDS = Object.keys(TEMPLATES) as StoryTemplateId[];
-
-/** Whether the payload rail is open on a wide screen. Persisted, not per-session. */
-const RAIL_KEY = 'reepi.rail';
-
-function storedRail(): boolean {
-  try {
-    const raw = window.localStorage.getItem(RAIL_KEY);
-    if (raw === 'open') return true;
-    if (raw === 'closed') return false;
-  } catch {
-    /* private mode */
-  }
-  // Default to closed: the transcript is the product.
-  return false;
-}
 
 export function App() {
   const boot = useStore((state) => state.boot);
@@ -55,16 +41,9 @@ export function App() {
   const openDialog = useStore((state) => state.openDialog);
   const palette = useStore((state) => state.ui.palette);
   const setPalette = useStore((state) => state.setPalette);
-  const [railOpen, setRailOpen] = useState(storedRail);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(RAIL_KEY, railOpen ? 'open' : 'closed');
-    } catch {
-      /* private mode */
-    }
-  }, [railOpen]);
-
+  const railOpen = useStore((state) => state.railOpen);
+  const setRailOpen = useStore((state) => state.setRailOpen);
+  const page = useStore((state) => state.page);
 
   useEffect(() => {
     void boot();
@@ -83,7 +62,8 @@ export function App() {
       if (event.key === '\\') {
         event.preventDefault();
         if (window.matchMedia('(min-width: 80rem)').matches) {
-          setRailOpen((value) => !value);
+          const state = useStore.getState();
+          state.setRailOpen(!state.railOpen);
         } else {
           const state = useStore.getState();
           state.setDrawer(state.ui.drawer === 'right' ? null : 'right');
@@ -117,9 +97,15 @@ export function App() {
         {/* --------------------------------------------------------- centre */}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <AppHeader />
-          <Transcript />
-          <Composer />
+          {page === 'cast' ? (
+            <CastPage />
+          ) : (
+            <>
+              <AppHeader />
+              <Transcript />
+              <Composer />
+            </>
+          )}
         </main>
 
         {/* ------------------------------------------------------ inspector */}
@@ -128,22 +114,8 @@ export function App() {
             writing — so on a wide screen it collapses to a single button, and
             remembers the choice. Below xl it is a drawer instead. */}
         {railOpen ? (
-          <aside
-            className="hidden w-[21rem] shrink-0 border-l border-border xl:flex xl:flex-col"
-            aria-label="Payload inspector"
-          >
-            <button
-              type="button"
-              className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2 text-left"
-              onClick={() => setRailOpen(false)}
-              aria-label="Hide the payload inspector"
-            >
-              <span className="eyebrow">Payload</span>
-              <IconClose size={13} className="ml-auto text-faint" />
-            </button>
-            <div className="min-h-0 flex-1">
-              <Inspector />
-            </div>
+          <aside className="hidden w-[21rem] shrink-0 border-l border-border xl:flex xl:flex-col" aria-label="Payload inspector">
+            <Inspector onClose={() => setRailOpen(false)} />
           </aside>
         ) : (
           <button
@@ -165,24 +137,6 @@ export function App() {
 
       {drawer === 'nav' ? <NavSheet /> : null}
 
-      {drawer === 'left' ? (
-        <div className="fixed inset-0 z-[60] lg:hidden">
-          <button
-            type="button"
-            className="absolute inset-0"
-            style={{ background: 'rgba(0,0,0,0.55)', border: 0 }}
-            onClick={() => setDrawer(null)}
-            aria-label="Close the library"
-          />
-          <div
-            className="animate-slide-in-left absolute inset-y-0 left-0 w-[min(88vw,20rem)] border-r border-border"
-            style={{ background: 'var(--panel)', boxShadow: 'var(--shadow-3)' }}
-          >
-            <Sidebar />
-          </div>
-        </div>
-      ) : null}
-
       {drawer === 'right' ? (
         <div className="fixed inset-0 z-[60] xl:hidden">
           <button
@@ -196,20 +150,7 @@ export function App() {
             className="animate-slide-in absolute inset-y-0 right-0 flex w-[min(92vw,24rem)] flex-col border-l border-border"
             style={{ background: 'var(--panel)', boxShadow: 'var(--shadow-3)' }}
           >
-            <div className="pt-safe flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-              <span className="eyebrow">Story</span>
-              <button
-                type="button"
-                className="icon-btn ml-auto"
-                onClick={() => setDrawer(null)}
-                aria-label="Close the story panel"
-              >
-                <IconClose size={14} />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1">
-              <Inspector />
-            </div>
+            <Inspector onClose={() => setDrawer(null)} />
           </div>
         </div>
       ) : null}

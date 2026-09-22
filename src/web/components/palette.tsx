@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboa
 import { TEMPLATES, type StoryTemplateId } from '../../shared/api.ts';
 import { formatPercent, formatUsd } from '../../shared/cost.ts';
 import { useStore, type RightTab } from '../store.ts';
+import { SECTIONS, SECTION_LABEL } from './inspector/menu.tsx';
 import { IconBook, IconPlus, IconScroll, IconSearch, IconWarm } from './icons.tsx';
 
 type Command = {
@@ -20,15 +21,10 @@ type Command = {
   run: () => void;
 };
 
-const SECTION_TABS: { id: RightTab; hint: string }[] = [
-  { id: 'blocks', hint: 'payload order, tokens and volatility' },
-  { id: 'cast', hint: 'character cards' },
-  { id: 'persona', hint: 'the card the model reads as you' },
-  { id: 'lore', hint: 'the lorebook' },
-  { id: 'memory', hint: 'recalled facts' },
-  { id: 'scene', hint: 'state, notes and threads' },
-  { id: 'director', hint: 'agentic passes and notes' },
-];
+const SECTION_TABS: { id: RightTab; hint: string }[] = SECTIONS.map((section) => ({
+  id: section.id,
+  hint: section.hint,
+}));
 
 export function CommandPalette({ onClose }: { onClose: () => void }) {
   const stories = useStore((state) => state.stories);
@@ -39,6 +35,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const createStory = useStore((state) => state.createStory);
   const openDialog = useStore((state) => state.openDialog);
   const setRightTab = useStore((state) => state.setRightTab);
+  const setRailOpen = useStore((state) => state.setRailOpen);
+  const setPage = useStore((state) => state.setPage);
   const setDrawer = useStore((state) => state.setDrawer);
   const setTheme = useStore((state) => state.setTheme);
   const runWarm = useStore((state) => state.runWarm);
@@ -55,8 +53,12 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   }, []);
 
   const commands = useMemo<Command[]>(() => {
+    /* Opening a section has to work on both layouts: the rail on a wide screen
+       (which has to be *open* first) and the drawer on a narrow one. Setting only
+       the drawer left this command inert at every width where the rail exists. */
     const openInspector = (tab: RightTab): void => {
       setRightTab(tab);
+      setRailOpen(true);
       setDrawer('right');
       onClose();
     };
@@ -69,6 +71,16 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         group: 'Studio',
         run: () => {
           openDialog({ kind: 'new-story' });
+          onClose();
+        },
+      },
+      {
+        id: 'cast',
+        label: 'Cast',
+        hint: 'the roster — characters and personas',
+        group: 'Go',
+        run: () => {
+          setPage('cast');
           onClose();
         },
       },
@@ -177,7 +189,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     for (const tab of SECTION_TABS) {
       list.push({
         id: `tab-${tab.id}`,
-        label: `Inspector · ${tab.id}`,
+        label: `Inspector · ${SECTION_LABEL[tab.id]}`,
         hint: tab.hint,
         group: 'Go',
         run: () => openInspector(tab.id),
@@ -253,6 +265,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     runDiagnose,
     runWarm,
     setDrawer,
+    setPage,
+    setRailOpen,
     setRightTab,
     setTheme,
     switchScene,

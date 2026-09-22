@@ -237,7 +237,7 @@ export const api = {
     update: (storyId: string, patch: Partial<Story>, signal?: AbortSignal) =>
       send<Story>(`/api/stories/${enc(storyId)}`, json('PATCH', patch, signal)),
     remove: (storyId: string, signal?: AbortSignal) =>
-      send<{ ok: true }>(`/api/stories/${enc(storyId)}`, json('DELETE', undefined, signal)),
+      send<{ ok: true; chats: string[] }>(`/api/stories/${enc(storyId)}`, json('DELETE', undefined, signal)),
     duplicate: (storyId: string, signal?: AbortSignal) =>
       send<Story>(`/api/stories/${enc(storyId)}/duplicate`, json('POST', {}, signal)),
     setTheme: (storyId: string, theme: Theme, signal?: AbortSignal) =>
@@ -276,7 +276,14 @@ export const api = {
     update: (characterId: string, patch: Partial<Character>, signal?: AbortSignal) =>
       send<Character>(`/api/characters/${enc(characterId)}`, json('PATCH', patch, signal)),
     remove: (characterId: string, signal?: AbortSignal) =>
-      send<{ ok: true }>(`/api/characters/${enc(characterId)}`, json('DELETE', undefined, signal)),
+      send<{ ok: true; chats: string[] }>(`/api/characters/${enc(characterId)}`, json('DELETE', undefined, signal)),
+    /**
+     * Open this character's 1:1 chat, creating it on first use. One chat per
+     * character, so a repeat call is answered with 409 rather than a second
+     * conversation — the caller then opens the chat that already exists.
+     */
+    startChat: (characterId: string, signal?: AbortSignal) =>
+      send<Story>(`/api/characters/${enc(characterId)}/chat`, json('POST', {}, signal)),
   },
 
   /* ------------------------------------------------------------ personas */

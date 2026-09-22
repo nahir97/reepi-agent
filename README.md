@@ -206,9 +206,19 @@ accent and the story's turns aligned left. Dialogue is the loudest ink on the pa
 because in roleplay dialogue is the point. Every number the app computes is one
 click away and none of it is on the default screen.
 
-- **Characters and personas are yours to build.** A full editor for each: portrait,
-  name, tagline, description, personality, speech habits, scenario and example
-  dialogue. Portraits show beside every turn the character speaks.
+- **Characters and personas are yours to build** on a **Cast page** — a roster you scan,
+  search, filter and sort, one card each with its weight in the prefix. It opens from the
+  studio list in the library rail (and the phone's menu), so building a cast does not begin
+  in the payload inspector. Each card has a full editor: portrait, name, tagline,
+  description, personality, speech habits, scenario and example dialogue, with portraits
+  shown beside every turn the character speaks.
+- **Click a character and you are talking to them.** A card's face opens a 1:1 chat — created
+  on first use, reopened after that — and that chat is a real conversation: one borrowed card,
+  its own transcript, its own cache prefix and cost. It inherits the story's world (contract,
+  genre, style, bible, scenario and anchored lore) and none of its turns, and it opens on the
+  card's greeting. Who you are is a chip beside the composer, switchable mid-chat; switching
+  re-prices the payload from the persona block on, which is the one cache cost the interface
+  states before you take it. The pencil in the card's footer is still the editor.
 - **Attribution.** Any turn can be reassigned to a character, so an ensemble scene
   reads as a conversation between named speakers rather than a wall of "Narrator".
 - **One cost pill** in the composer — live predicted hit rate, the price of the
@@ -327,6 +337,7 @@ POST /api/stories/:id/director  → DirectorResult
 POST /api/stories/:id/archivist → ArchivistResult
 POST /api/stories/:id/summarise → SummaryResult
 POST /api/stories/:id/conductor → ConductorResult      N drafts, one judge
+POST /api/characters/:id/chat   → Story                open or start their 1:1 chat
 GET  /api/stories/:id/insights  → Insights
 GET  /api/diagnose              → DiagnoseReport       live cache verification
 GET  /api/stories/:id/export?format=json|chara|markdown
@@ -355,6 +366,7 @@ src/
     store/           13 DAO modules behind index.ts — mapper lives beside its DAO
     deepseek.ts      SSE client, usage/cache accounting, retries
     composer.ts      the block-ordered, cache-stable payload builder
+    chats.ts         starting a character chat: the world it copies, the card it borrows
     lorebook.ts      keyword scan, budget packing, BM25 + term extraction
     orchestrator.ts  turn engine, trim hysteresis, calibration, ledger
     agents/          director / archivist / summariser / conductor / diagnose
@@ -366,7 +378,7 @@ src/
       portability.ts export/import: JSON, markdown, chara v2 PNG
       insights.ts    the cost ledger read model
   web/
-    App.tsx          shell: prose column, library rail, collapsible inspector
+    App.tsx          shell: centre column routing (transcript or a page), rails
     store.ts         barrel over store/ — one zustand store, assembled from slices
     store/
       types.ts       the Store interface and the store's vocabulary
@@ -377,12 +389,18 @@ src/
     theme.ts         theme labels and swatch gradients, one definition
     api.ts           typed client + SSE frame reader
     components/
+      Library.tsx        the conversation list and its day filing, shared by rail and sheet
+      CastPage.tsx       the cast roster: a page in the centre column, and the way into a chat
+      Sidebar.tsx        the library rail: band, list, scenes, studio theme
+      StudioNav.tsx      cast / cost / settings / transfer / duplicate, one list for both hosts
+      StoryActions.tsx   a story row's overflow menu, viewport-anchored
       Transcript.tsx     the chat feed, scroll-stick policy, streaming states
       MessageBubble.tsx  avatar + name + bubble, aligned per speaker
       MessageActions.tsx swipe/regenerate/edit/pin/exclude/branch/attribute
-      Composer.tsx       writing surface and the compact cost pill
+      Composer.tsx       writing surface, the compact cost pill, and who you are writing as
+      PersonaSwitch.tsx  the composer's persona chip: who the model reads as you, switchable
       CacheMeter.tsx     the pill, and the full payload meter behind it
-      Inspector.tsx      tab chrome; tabs live in inspector/
+      Inspector.tsx      rail chrome: the band, the menu, the open section
       panel.tsx          SectionTitle / Card / Metric, shared by every panel
       editors.tsx        cost ledger + full character/persona editors
       MobileBar.tsx      app header and the navigation sheet

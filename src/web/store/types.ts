@@ -11,7 +11,37 @@ import type { AccountInfo, DiagnoseReport, ExportFormat, Insights, StoryBundle, 
 import type { ChatRequest, DirectorNote, Message, PayloadPlan, Scene, Story, Theme } from '../../shared/types.ts';
 
 export type RightTab = 'blocks' | 'cast' | 'persona' | 'lore' | 'memory' | 'scene' | 'director';
-export type Drawer = 'left' | 'right' | 'nav' | null;
+
+/**
+ * What the payload rail is showing: a section, or `null` for the section menu.
+ *
+ * The rail is a drill-down rather than a tab strip — seven tabs in a 21rem column
+ * is a strip nobody reads, and none of them could say anything about its own
+ * contents. A menu row can: it carries the section's live summary, which is what
+ * makes the list worth a level of navigation.
+ */
+export type RailView = RightTab | null;
+
+/**
+ * What the centre column is showing.
+ *
+ * `story` is the transcript — the product. `cast` replaces the centre column
+ * while the writer is building their roster, and `null` means *no page*: the
+ * story, which is what every other surface returns to.
+ *
+ * A page rather than a dialog because a roster needs the window: browsing is
+ * scanning, and a 54rem frame over the prose is the wrong shape for it. It only
+ * ever replaces the *centre* — the library rail keeps its story list on a wide
+ * screen, and the phone gets a back control, so neither loses its way out.
+ */
+export type Page = 'story' | 'cast';
+
+/**
+ * `nav` is the phone's menu-and-library sheet; `right` is the story inspector.
+ * There is no `left`: the library is a drawer-shaped list inside `nav` rather
+ * than a second sheet, so the two could not drift apart.
+ */
+export type Drawer = 'right' | 'nav' | null;
 
 export type Toast = {
   id: string;
@@ -36,12 +66,15 @@ export type StreamingState = {
   startedAt: number;
 };
 
+/** The two kinds of card a story carries: characters, and the writer's personas. */
+export type CardKind = 'character' | 'persona';
+
 export type Dialog =
   | { kind: 'story-settings' }
   | { kind: 'import-export' }
   | { kind: 'new-story' }
   | { kind: 'insights' }
-  | { kind: 'card'; card: 'character' | 'persona'; id: string }
+  | { kind: 'card'; card: CardKind; id: string }
   | { kind: 'confirm'; title: string; body: string; confirmLabel: string; danger: boolean; run: () => void }
   | null;
 
@@ -77,7 +110,11 @@ export type Store = {
 
   /* -------------------------------------------------------------- chrome */
   theme: Theme;
-  ui: { rightTab: RightTab; drawer: Drawer; dialog: Dialog; palette: boolean; toasts: Toast[] };
+  /** Whether the payload rail is open on a wide screen. Persisted. */
+  railOpen: boolean;
+  /** Which page the centre column shows. `story` is the transcript. */
+  page: Page;
+  ui: { rightTab: RailView; drawer: Drawer; dialog: Dialog; palette: boolean; toasts: Toast[] };
 
   /* ------------------------------------------------------------ actions */
   boot: () => Promise<void>;
@@ -97,7 +134,22 @@ export type Store = {
   updateScene: (sceneId: string, patch: Partial<Scene>) => Promise<void>;
   archiveScene: (sceneId: string) => Promise<void>;
 
-  setRightTab: (tab: RightTab) => void;
+  /**
+   * Add a card, then open its editor. Living here rather than in the host is what
+   * lets the rail's create buttons and the cast page's be one code path instead of
+   * two that drift.
+   */
+  createCard: (card: CardKind) => Promise<void>;
+
+  /**
+   * Open this character's 1:1 chat, creating it the first time. A card has at
+   * most one chat, so this is "open or start" rather than "create".
+   */
+  startChatWith: (characterId: string) => Promise<void>;
+
+  setRightTab: (tab: RailView) => void;
+  setRailOpen: (open: boolean) => void;
+  setPage: (page: Page) => void;
   setDrawer: (drawer: Drawer) => void;
   openDialog: (dialog: Dialog) => void;
   setPalette: (open: boolean) => void;

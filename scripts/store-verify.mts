@@ -14,8 +14,10 @@ const dir = mkdtempSync(join(tmpdir(), 'reepi-store-'));
 const { openDatabase, closeDatabase } = await import('../src/server/db.ts');
 const {
   stories, scenes, characters, personas, lore, messages, memories, notes, threads,
-  ledger, prefixes, settings, warmups, loadStoryBundle,
+  ledger, prefixes, settings, warmups, loadStoryBundle, resolvePersona,
 } = await import('../src/server/store/index.ts');
+const { startChat } = await import('../src/server/chats.ts');
+const { recreateStoryBundle } = await import('../src/server/routes/library/bundle.ts');
 
 openDatabase(join(dir, 'split.sqlite'));
 
@@ -86,9 +88,58 @@ check('loadStoryBundle assembles every child', Boolean(
 ));
 check('loadStoryBundle on unknown id returns null', loadStoryBundle('nope') === null);
 
+// --- character chats: a story with a borrowed card, and a borrowed persona pool
+// A greeting lives on the card, which is where an imported card keeps `first_mes`.
+characters.update(chr.id, { meta: { tag: 'x', first_mes: 'Well met, stranger.' } });
+
+const started = startChat(chr.id);
+check('startChat creates the chat', started.kind === 'created');
+const chat = started.kind === 'created' ? started.story : null;
+check('chat is titled for the card', chat?.title === 'Asper');
+check('chat carries the character reference', chat?.characterId === chr.id);
+check('chat copies the world but not the transcript', Boolean(
+  chat && chat.contract === story.contract && chat.theme === story.theme && chat.model === story.model &&
+  chat.instruct === '' && chat.synopsis === '',
+));
+check('chat seeds the card greeting', Boolean(
+  chat && messages.list(chat.id).length === 1 &&
+  messages.list(chat.id)[0]?.origin === 'greeting' &&
+  messages.list(chat.id)[0]?.variants[0] === 'Well met, stranger.' &&
+  messages.list(chat.id)[0]?.speaker === 'Asper',
+));
+check('chat copies anchored lore only', chat ? lore.list(chat.id).length === 1 : false);
+
+const chatBundle = chat ? loadStoryBundle(chat.id) : null;
+check('a chat borrows its cast (one card)', chatBundle?.characters.length === 1 && chatBundle?.characters[0]?.id === chr.id);
+check('a chat borrows the home persona pool', chatBundle?.personas.length === 1 && chatBundle?.personas[0]?.id === per.id);
+check('resolvePersona reads through the pool', chat ? resolvePersona(chat)?.id === per.id : false);
+check('a chat resolves its persona even with no rows of its own', chat ? personas.list(chat.id).length === 0 : false);
+
+const again = startChat(chr.id);
+check('one chat per character', again.kind === 'exists' && again.story.id === chat?.id);
+
+let refusedSecondChat = false;
+try {
+  stories.create({ title: 'Second thoughts', characterId: chr.id });
+} catch {
+  refusedSecondChat = true;
+}
+check('the unique index refuses a second chat', refusedSecondChat);
+
+const branched = chat ? recreateStoryBundle(loadStoryBundle(chat.id)!, { title: 'Asper (copy)' }) : null;
+check('duplicating a chat yields a standalone story', Boolean(
+  branched && branched.story.characterId === null && branched.characters.length === 1 &&
+  branched.messages.length === 1,
+));
+
 // --- cascade delete still works through the split
 stories.remove(story.id);
 check('story delete cascades (foreign_keys ON)', messages.list(story.id).length === 0);
+// The card went with the story, so the chat that borrowed it must be gone too —
+// this is a two-hop cascade (stories -> characters -> stories) and the reason
+// `character_id` is a real foreign key rather than a bare id.
+check('deleting the story takes the card chats with it', chat ? stories.get(chat.id) === null : false);
+check('the chat turns went with it', chat ? messages.list(chat.id).length === 0 : false);
 
 const failed = checks.filter(([, ok]) => !ok);
 for (const [name, ok, detail] of checks) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`);

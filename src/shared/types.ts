@@ -261,6 +261,13 @@ export type Story = {
   /** Post-history instruction; the model sees this last. */
   instruct: string;
   personaId: string | null;
+  /**
+   * Set on a 1:1 character chat: the card the chat is about. A chat's cast is
+   * exactly that card and its persona pool is the pool of the story that owns it,
+   * so the chat is otherwise an ordinary story — same transcript, same cache
+   * prefix rules, same cost ledger. `null` on a story.
+   */
+  characterId: string | null;
   model: ModelId;
   effort: ReasoningEffort;
   temperature: number;

@@ -18,17 +18,21 @@ import type {
 } from '../../../shared/types.ts';
 import type { StoryBundle, VariantBody } from '../../../shared/api.ts';
 import {
+  castOf,
   characters,
   loadStoryBundle,
   lore,
   memories,
   messages,
   notes,
+  personaHomeId,
+  personaPoolOf,
   personas,
   scenes,
   stories,
   threads,
 } from '../../store/index.ts';
+import { chatsOfCharacter, chatsOfStory, startChat } from '../../chats.ts';
 import { param, reject } from './shared.ts';
 import {
   sanitiseCharacter,
@@ -106,8 +110,11 @@ mod.patch('/stories/:id', async (c) => {
 mod.delete('/stories/:id', (c) => {
   const id = param(c, 'id');
   if (!stories.get(id)) return notFound(c, 'Story');
+  /* A character chat is deleted with the card it borrows, by the foreign key —
+     but the writer is told what went with it instead of finding out later. */
+  const chats = chatsOfStory(id);
   stories.remove(id);
-  return c.json<{ ok: true }>({ ok: true });
+  return c.json<{ ok: true; chats: string[] }>({ ok: true, chats: chats.map((chat) => chat.title) });
 });
 
 mod.post('/stories/:id/duplicate', (c) => {
@@ -164,12 +171,20 @@ mod.delete('/scenes/:id', (c) => {
 mod.get('/stories/:id/characters', (c) => {
   const story = stories.get(param(c, 'id'));
   if (!story) return notFound(c, 'Story');
-  return c.json<Character[]>(characters.list(story.id));
+  return c.json<Character[]>(castOf(story));
 });
 
+/**
+ * The cast of a chat is borrowed, not written: it is exactly the card the chat was
+ * started from. Letting this create a row anyway would insert a character the
+ * composer never reads — an invisible orphan that looks like a successful save.
+ */
 mod.post('/stories/:id/characters', async (c) => {
   const story = stories.get(param(c, 'id'));
   if (!story) return notFound(c, 'Story');
+  if (story.characterId) {
+    return fail(c, 400, 'A chat has exactly one character', 'Edit that card, or start a chat from another one.');
+  }
 
   const body = await readBody<Partial<Character>>(c);
   if (!body) return fail(c, 400, 'Invalid body', 'Expected a JSON object.');
@@ -178,6 +193,23 @@ mod.post('/stories/:id/characters', async (c) => {
   if (sanitised.rejected.length > 0) return reject(c, 'character fields', sanitised.rejected);
 
   return c.json<Character>(characters.create(story.id, sanitised.patch));
+});
+
+/**
+ * Start the 1:1 chat with this character, or hand back the one that already
+ * exists. One chat per character, so this is not "create" so much as "open
+ * or create" — re-clicking a card must land in the conversation it started.
+ */
+mod.post('/characters/:id/chat', (c) => {
+  const outcome = startChat(param(c, 'id'));
+  if (outcome.kind === 'unknown-character') return notFound(c, 'Character');
+  if (outcome.kind === 'orphan') {
+    return fail(c, 409, 'This character has no story to draw from', 'It cannot be chatted with yet.');
+  }
+  if (outcome.kind === 'exists') {
+    return fail(c, 409, 'This character already has a chat', outcome.story.title);
+  }
+  return c.json<Story>(outcome.story);
 });
 
 mod.patch('/characters/:id', async (c) => {
@@ -197,8 +229,11 @@ mod.patch('/characters/:id', async (c) => {
 mod.delete('/characters/:id', (c) => {
   const id = param(c, 'id');
   if (!characters.get(id)) return notFound(c, 'Character');
+  /* The chat goes with the card by foreign key; naming it here is what lets the
+     client say so before asking, and after it happens. */
+  const chats = chatsOfCharacter(id);
   characters.remove(id);
-  return c.json<{ ok: true }>({ ok: true });
+  return c.json<{ ok: true; chats: string[] }>({ ok: true, chats: chats.map((chat) => chat.title) });
 });
 
 /* -- personas ------------------------------------------------------------ */
@@ -206,7 +241,7 @@ mod.delete('/characters/:id', (c) => {
 mod.get('/stories/:id/personas', (c) => {
   const story = stories.get(param(c, 'id'));
   if (!story) return notFound(c, 'Story');
-  return c.json<Persona[]>(personas.list(story.id));
+  return c.json<Persona[]>(personaPoolOf(story));
 });
 
 mod.post('/stories/:id/personas', async (c) => {
@@ -219,8 +254,13 @@ mod.post('/stories/:id/personas', async (c) => {
   const sanitised = sanitisePersona(body);
   if (sanitised.rejected.length > 0) return reject(c, 'persona fields', sanitised.rejected);
 
+  /* A chat owns no personas: it borrows the card's home story's pool, so a new
+     persona written inside a chat is added to that pool — otherwise it would be
+     invisible to the very chat that just created it. The *selection* still lands
+     on this story, so a chat adopting its new default persona is immediate. */
+  const home = personaHomeId(story);
   // The DAO clears `isDefault` on the siblings when this one is the default.
-  const persona = personas.create(story.id, sanitised.patch);
+  const persona = personas.create(home, sanitised.patch);
   if (persona.isDefault && story.personaId !== persona.id) {
     stories.update(story.id, { personaId: persona.id });
   }
@@ -252,11 +292,15 @@ mod.delete('/personas/:id', (c) => {
   const persona = personas.get(id);
   if (!persona) return notFound(c, 'Persona');
 
-  const story = stories.get(persona.storyId);
-  if (story?.personaId === id) {
-    const others = personas.list(persona.storyId).filter((candidate) => candidate.id !== id);
-    const replacement = others.find((candidate) => candidate.isDefault) ?? others[0];
-    stories.update(persona.storyId, { personaId: replacement?.id ?? null });
+  /* Every story that had this persona selected must be re-pointed, not only the
+     story that owns the row: a character chat borrows this pool, so its
+     `persona_id` can refer to a persona outside itself. Without this sweep a
+     chat would keep a dangling id and silently send no persona block at all. */
+  const referencing = stories.list().filter((story) => story.personaId === id);
+  for (const story of referencing) {
+    const pool = personaPoolOf(story).filter((candidate) => candidate.id !== id);
+    const replacement = pool.find((candidate) => candidate.isDefault) ?? pool[0] ?? null;
+    stories.update(story.id, { personaId: replacement?.id ?? null });
   }
 
   personas.remove(id);

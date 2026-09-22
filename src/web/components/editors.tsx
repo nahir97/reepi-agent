@@ -14,6 +14,7 @@ import type { Character, Persona } from '../../shared/types.ts';
 import { estimateTokens } from '../../shared/tokens.ts';
 import { api, fileToBase64 } from '../api.ts';
 import { useStore } from '../store.ts';
+import type { CardKind } from '../store.ts';
 import { Avatar } from './Avatar.tsx';
 import { Insights } from './Insights.tsx';
 import { Shell } from './modals.tsx';
@@ -167,6 +168,8 @@ function Field({
 }
 
 function CharacterEditor({ character }: { character: Character }) {
+  const stories = useStore((state) => state.stories);
+  const loadStories = useStore((state) => state.loadStories);
   const refreshBundle = useStore((state) => state.refreshBundle);
   const fail = useStore((state) => state.fail);
   const toast = useStore((state) => state.toast);
@@ -182,18 +185,34 @@ function CharacterEditor({ character }: { character: Character }) {
   };
 
   const remove = (): void => {
+    /* A chat is deleted with the card it borrows (the database cascades), so the
+       confirm has to say so — by name, because "your chat with Cantarella" is
+       something a writer recognises and "any related chats" is not. */
+    const chats = stories.filter((story) => story.characterId === character.id);
     openDialog({
       kind: 'confirm',
       title: `Delete ${character.name}?`,
-      body: 'The card leaves the payload and the cast list. Their turns in the transcript stay where they are.',
+      body:
+        chats.length > 0
+          ? `The card leaves the payload and the cast list, and the chat with them goes with it: ${chats
+              .map((chat) => `“${chat.title}”`)
+              .join(', ')}. Their turns in this story's transcript stay where they are.`
+          : 'The card leaves the payload and the cast list. Their turns in the transcript stay where they are.',
       confirmLabel: 'Delete character',
       danger: true,
       run: () => {
         void (async () => {
           try {
-            await api.characters.remove(character.id);
+            const result = await api.characters.remove(character.id);
             await refreshBundle({ quiet: true });
-            toast({ kind: 'ok', title: 'Character deleted' });
+            await loadStories().catch(() => undefined);
+            toast({
+              kind: 'ok',
+              title: 'Character deleted',
+              ...(result.chats.length > 0
+                ? { detail: `Also removed ${result.chats.length} chat${result.chats.length === 1 ? '' : 's'}: ${result.chats.join(', ')}` }
+                : {}),
+            });
           } catch (error) {
             fail(error, 'Could not delete the character');
           }
@@ -367,10 +386,11 @@ function PersonaEditor({ persona }: { persona: Persona }) {
 }
 
 /**
- * The card editor. Opened either from the inspector’s cast list or from the nav
- * sheet, and it closes back to whatever the writer was doing.
+ * The card editor. Opened from the cast page, from the inspector's cast list, or
+ * from the nav sheet, and it closes back to whatever was underneath — which now
+ * needs no bookkeeping at all: the cast page is a page, so it is still there.
  */
-export function CardEditorDialog({ kind, id }: { kind: 'character' | 'persona'; id: string }) {
+export function CardEditorDialog({ kind, id }: { kind: CardKind; id: string }) {
   const bundle = useStore((state) => state.bundle);
   const openDialog = useStore((state) => state.openDialog);
 

@@ -1,20 +1,24 @@
 /**
  * Cast: the character cards, and their share of the frozen prefix.
+ *
+ * The roster itself — searching it, sorting it, comparing cards side by side —
+ * is `CastPage`, which is where a writer goes to build one. This section stays
+ * because it answers a different question: what the cast costs, in payload
+ * order, beside the other blocks.
  */
 
 import { formatTokens } from '../../../shared/cost.ts';
-import { api } from '../../api.ts';
 import { useStore } from '../../store.ts';
 import { Avatar } from '../Avatar.tsx';
 import { Card, SectionTitle } from '../panel.tsx';
-import { IconPen, IconPlus } from '../icons.tsx';
+import { IconPen, IconPlus, IconUsers } from '../icons.tsx';
 
 /* -------------------------------------------------------------------- cast */
 
 export function CastTab() {
   const bundle = useStore((state) => state.bundle);
-  const refreshBundle = useStore((state) => state.refreshBundle);
-  const fail = useStore((state) => state.fail);
+  const createCard = useStore((state) => state.createCard);
+  const setPage = useStore((state) => state.setPage);
   const openDialog = useStore((state) => state.openDialog);
 
   if (!bundle) return null;
@@ -26,22 +30,7 @@ export function CastTab() {
         title="Cast"
         hint={`${formatTokens(total)} tok total`}
         action={
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ padding: '0.2rem 0.45rem' }}
-            onClick={() => {
-              void (async () => {
-                try {
-                  const created = await api.characters.create(bundle.story.id, { name: 'New character' });
-                  await refreshBundle({ quiet: true });
-                  openDialog({ kind: 'card', card: 'character', id: created.id });
-                } catch (error) {
-                  fail(error, 'Could not add a character');
-                }
-              })();
-            }}
-          >
+          <button type="button" className="btn btn-ghost" style={{ padding: '0.2rem 0.45rem' }} onClick={() => void createCard('character')}>
             <IconPlus size={11} />
             Add
           </button>
@@ -74,6 +63,18 @@ export function CastTab() {
           </button>
         </Card>
       ))}
+
+      {/* The roster is the place to build a cast; this column is for reading what
+          it costs. One row, rather than a second copy of the page's controls. */}
+      <button
+        type="button"
+        className="btn btn-ghost w-full justify-start"
+        style={{ padding: '0.3rem 0.45rem' }}
+        onClick={() => setPage('cast')}
+      >
+        <IconUsers size={12} />
+        Open the cast page
+      </button>
     </div>
   );
 }

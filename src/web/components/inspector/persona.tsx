@@ -1,9 +1,11 @@
 /**
  * Persona: the card the model reads as the writer.
+ *
+ * The same division as the cast section: this is the persona's share of the
+ * payload, and `CastPage` is where personas are built and compared.
  */
 
 import { formatTokens } from '../../../shared/cost.ts';
-import { api } from '../../api.ts';
 import { useStore } from '../../store.ts';
 import { Avatar } from '../Avatar.tsx';
 import { Card, SectionTitle } from '../panel.tsx';
@@ -13,8 +15,7 @@ import { IconPlus } from '../icons.tsx';
 
 export function PersonaTab() {
   const bundle = useStore((state) => state.bundle);
-  const refreshBundle = useStore((state) => state.refreshBundle);
-  const fail = useStore((state) => state.fail);
+  const createCard = useStore((state) => state.createCard);
   const openDialog = useStore((state) => state.openDialog);
 
   if (!bundle) return null;
@@ -25,22 +26,7 @@ export function PersonaTab() {
         title="Personas"
         hint={`${bundle.personas.length}`}
         action={
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ padding: '0.2rem 0.45rem' }}
-            onClick={() => {
-              void (async () => {
-                try {
-                  const created = await api.personas.create(bundle.story.id, { name: 'New persona' });
-                  await refreshBundle({ quiet: true });
-                  openDialog({ kind: 'card', card: 'persona', id: created.id });
-                } catch (error) {
-                  fail(error, 'Could not add a persona');
-                }
-              })();
-            }}
-          >
+          <button type="button" className="btn btn-ghost" style={{ padding: '0.2rem 0.45rem' }} onClick={() => void createCard('persona')}>
             <IconPlus size={11} />
             Add
           </button>

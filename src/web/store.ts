@@ -12,9 +12,11 @@
 
 export { useStore } from './store/index.ts';
 export type {
+  CardKind,
   Dialog,
   Drawer,
   LiveToolEvent,
+  Page,
   RightTab,
   Store,
   StoryStat,

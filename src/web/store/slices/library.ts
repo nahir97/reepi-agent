@@ -14,6 +14,7 @@ import { api, describeError, ApiError } from '../../api.ts';
 import { IDLE_STREAM } from '../initial.ts';
 import { bumpStreamSeq } from '../runtime.ts';
 import { applyTheme, persistTheme, storedTheme, isTheme } from '../theme.ts';
+import { RAIL_KEY } from '../initial.ts';
 import type { Store, Drawer, RightTab, StoryStat, Toast } from '../types.ts';
 import { nowId } from './helpers.ts';
 import type { Slice } from '../slice.ts';
@@ -21,8 +22,8 @@ import type { Story, Scene, Theme } from '../../../shared/types.ts';
 import type { StoryTemplateId } from '../../../shared/api.ts';
 export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setTheme' | 'setStoryTheme' | 'loadStories' | 'loadStoryStats' | 'openStory' | 'refreshBundle' |
   'createStory' | 'duplicateStory' | 'archiveStory' | 'updateStory' | 'createScene' | 'switchScene' |
-  'updateScene' | 'archiveScene' | 'setRightTab' | 'setDrawer' | 'openDialog' | 'setPalette' | 'toast' |
-  'dismissToast' | 'fail'> {
+  'updateScene' | 'archiveScene' | 'createCard' | 'startChatWith' | 'setRightTab' | 'setRailOpen' | 'setPage' | 'setDrawer' |
+  'openDialog' | 'setPalette' | 'toast' | 'dismissToast' | 'fail'> {
   return {
     boot: async () => {
       const theme = storedTheme();
@@ -97,7 +98,9 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
 
     openStory: async (storyId) => {
       if (get().activeStoryId === storyId && get().bundle) {
-        set({ ui: { ...get().ui, drawer: null } });
+        /* Re-picking the story you are already in is a request to *see* it — which
+           is what a cast page is covering, and what a drawer is over. */
+        set({ ui: { ...get().ui, drawer: null }, page: 'story' });
         return;
       }
       if (get().streaming.active) get().abort();
@@ -168,13 +171,13 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       get().openDialog({
         kind: 'confirm',
         title: `Delete “${story?.title ?? 'this story'}”?`,
-        body: 'Every scene, character, memory and cost record for this story goes with it. This cannot be undone.',
+        body: 'Every scene, character, memory and cost record for this story goes with it — and any character chats started from it. This cannot be undone.',
         confirmLabel: 'Delete story',
         danger: true,
         run: () => {
           void (async () => {
             try {
-              await api.stories.remove(storyId);
+              const result = await api.stories.remove(storyId);
               const stories = get().stories.filter((item) => item.id !== storyId);
               set({ stories });
               if (get().activeStoryId === storyId) {
@@ -182,7 +185,13 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
                 const next = stories[0];
                 if (next) await get().openStory(next.id);
               }
-              get().toast({ kind: 'ok', title: 'Story deleted' });
+              get().toast({
+                kind: 'ok',
+                title: 'Story deleted',
+                ...(result.chats.length > 0
+                  ? { detail: `Also removed ${result.chats.length} chat${result.chats.length === 1 ? '' : 's'}: ${result.chats.join(', ')}` }
+                  : {}),
+              });
             } catch (error) {
               get().fail(error, 'Could not delete the story');
             }
@@ -223,7 +232,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       if (!bundle) return;
       const scene = bundle.scenes.find((item) => item.id === sceneId);
       if (!scene) return;
-      set({ activeSceneId: sceneId, ui: { ...get().ui, drawer: null } });
+      set({ activeSceneId: sceneId, ui: { ...get().ui, drawer: null }, page: 'story' });
       void get().refreshPlan({ storyId: bundle.story.id, sceneId, mode: 'continue' });
     },
 
@@ -252,7 +261,94 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       }
     },
 
+    /**
+     * Add a card, then open its editor.
+     *
+     * This lived in the inspector's cast and persona tabs, twice and almost
+     * identically. It moves here because the cast page needs the same behaviour,
+     * and two hosts editing the same list is exactly the drift a single action
+     * prevents — including the detail that the new card's editor opens with the
+     * *default* name until the writer types over it.
+     */
+    createCard: async (card) => {
+      const bundle = get().bundle;
+      if (!bundle) return;
+      const storyId = bundle.story.id;
+      try {
+        const created =
+          card === 'character'
+            ? await api.characters.create(storyId, { name: 'New character' })
+            : await api.personas.create(storyId, { name: 'New persona' });
+        await get().refreshBundle({ quiet: true });
+        get().openDialog({ kind: 'card', card, id: created.id });
+      } catch (error) {
+        get().fail(error, card === 'character' ? 'Could not add a character' : 'Could not add a persona');
+      }
+    },
+
+    /**
+     * Open a card's 1:1 chat, starting it the first time.
+     *
+     * The lookup is against `stories`, not a dedicated field, because a chat is
+     * just a story with `characterId` set — so "does this card have a chat" is a
+     * question the library already answers. `page` is cleared explicitly: a chat
+     * is opened *from* the cast page, and `openStory` deliberately does not move
+     * the centre column on its own.
+     */
+    startChatWith: async (characterId) => {
+      const existing = get().stories.find((story) => story.characterId === characterId);
+      if (existing) {
+        await get().openStory(existing.id);
+        set({ page: 'story' });
+        return;
+      }
+
+      try {
+        const chat = await api.characters.startChat(characterId);
+        set({ stories: [chat, ...get().stories] });
+        await get().openStory(chat.id);
+        set({ page: 'story' });
+        get().toast({ kind: 'ok', title: 'Chat open', detail: chat.title });
+        void get().loadStoryStats();
+      } catch (error) {
+        /* A 409 means the chat exists after all — another tab, or a double click
+           that got past the lookup above. Re-read the library and open the real
+           one rather than showing a failure for a request that succeeded. */
+        await get().loadStories().catch(() => undefined);
+        const chat = get().stories.find((story) => story.characterId === characterId);
+        if (chat) {
+          await get().openStory(chat.id);
+          set({ page: 'story' });
+          return;
+        }
+        get().fail(error, 'Could not start the chat');
+      }
+    },
+
     setRightTab: (rightTab) => set({ ui: { ...get().ui, rightTab } }),
+
+    /**
+     * The rail's open state lives in the store rather than in `App`'s local
+     * state so the command palette can reveal it — "Inspector · Cast" used to set
+     * the drawer, which is `xl:hidden`, so at the widths where the rail exists the
+     * command did nothing at all.
+     */
+    setRailOpen: (railOpen) => {
+      try {
+        window.localStorage.setItem(RAIL_KEY, railOpen ? 'open' : 'closed');
+      } catch {
+        /* private mode */
+      }
+      set({ railOpen });
+    },
+
+    /**
+     * Which page the centre column shows. Closing a card's editor returns here:
+     * the cast page is a page, so it stays where it was put — which is the whole
+     * reason a modal needed a `from` field to fake that, and a page does not.
+     */
+    setPage: (page) => set({ page }),
+
     setDrawer: (drawer) => set({ ui: { ...get().ui, drawer } }),
     openDialog: (dialog) => set({ ui: { ...get().ui, dialog } }),
     setPalette: (palette) => set({ ui: { ...get().ui, palette } }),

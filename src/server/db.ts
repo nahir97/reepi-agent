@@ -31,6 +31,15 @@ CREATE TABLE IF NOT EXISTS stories (
   exemplars       TEXT NOT NULL DEFAULT '',
   instruct        TEXT NOT NULL DEFAULT '',
   persona_id      TEXT,
+  /*
+   * Set on a 1:1 character chat: the one card that chat is about, borrowed from
+   * the story that owns it. A real foreign key on purpose — deleting the card
+   * deletes the chat and everything in it, declared once here instead of
+   * re-derived in every route. This is a forward reference to the characters
+   * table, created later in this same script; SQLite resolves it at DML time,
+   * not at CREATE TABLE time, so the order is safe.
+   */
+  character_id    TEXT REFERENCES characters(id) ON DELETE CASCADE,
   model           TEXT NOT NULL DEFAULT 'deepseek-flash',
   effort          TEXT NOT NULL DEFAULT 'none',
   temperature     REAL NOT NULL DEFAULT 1.0,
@@ -232,7 +241,25 @@ let db: DatabaseSync | null = null;
 const ADDITIVE_MIGRATIONS: { table: string; column: string; ddl: string }[] = [
   { table: 'prefixes', column: 'message_hashes', ddl: "TEXT NOT NULL DEFAULT '[]'" },
   { table: 'personas', column: 'avatar', ddl: 'TEXT' },
+  {
+    table: 'stories',
+    column: 'character_id',
+    ddl: 'TEXT REFERENCES characters(id) ON DELETE CASCADE',
+  },
 ];
+
+/**
+ * Indexes on columns that migrations may have just added.
+ *
+ * These cannot live in `DDL`: the script runs *before* `migrate`, so on an
+ * existing database the column would not exist yet and `CREATE INDEX` would
+ * throw before the migration that adds it ever ran. Running it here is
+ * unconditional, so a fresh file and an upgraded one end up identical.
+ */
+const POST_MIGRATION_INDEXES = `
+CREATE UNIQUE INDEX IF NOT EXISTS stories_character_id
+  ON stories(character_id) WHERE character_id IS NOT NULL;
+`;
 
 function migrate(handle: DatabaseSync): void {
   for (const migration of ADDITIVE_MIGRATIONS) {
@@ -246,6 +273,7 @@ function migrate(handle: DatabaseSync): void {
     handle.exec(`ALTER TABLE ${migration.table} ADD COLUMN ${migration.column} ${migration.ddl}`);
     console.log(`[reepi] migrated ${migration.table}.${migration.column}`);
   }
+  handle.exec(POST_MIGRATION_INDEXES);
 }
 
 export function openDatabase(path: string): DatabaseSync {

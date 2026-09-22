@@ -286,6 +286,16 @@ export const IconMenu = (props: IconProps) => (
   </Glyph>
 );
 
+/** A row's overflow: three dots rather than three buttons. Filled, not stroked —
+    at this radius a 1.4px outline is a ring, not a dot. */
+export const IconMore = (props: IconProps) => (
+  <Glyph {...props}>
+    <circle cx="3.4" cy="8" r="1.15" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="8" r="1.15" fill="currentColor" stroke="none" />
+    <circle cx="12.6" cy="8" r="1.15" fill="currentColor" stroke="none" />
+  </Glyph>
+);
+
 export const IconPanelRight = (props: IconProps) => (
   <Glyph {...props}>
     <rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.4" />

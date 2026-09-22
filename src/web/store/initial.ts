@@ -27,6 +27,27 @@ export const IDLE_STREAM: StreamingState = {
   startedAt: 0,
 };
 
+/**
+ * Where the rail's open state is remembered, and how it is read back.
+ *
+ * Read by `index.html`? No — only the theme is, because only the theme must be
+ * applied before first paint. The rail may open a frame late; what it must not do
+ * is disagree with the store, so the key and the parser live beside each other.
+ */
+export const RAIL_KEY = 'reepi.rail';
+
+export function storedRail(): boolean {
+  try {
+    const raw = window.localStorage.getItem(RAIL_KEY);
+    if (raw === 'open') return true;
+    if (raw === 'closed') return false;
+  } catch {
+    /* private mode */
+  }
+  // Default to closed: the transcript is the product.
+  return false;
+}
+
 /** Everything `Store` declares that is data rather than an action. */
 export function initialState(): Omit<
   Store,
@@ -45,7 +66,11 @@ export function initialState(): Omit<
   | 'switchScene'
   | 'updateScene'
   | 'archiveScene'
+  | 'createCard'
+  | 'startChatWith'
   | 'setRightTab'
+  | 'setRailOpen'
+  | 'setPage'
   | 'setDrawer'
   | 'openDialog'
   | 'setPalette'
@@ -97,6 +122,10 @@ export function initialState(): Omit<
     busy: null,
 
     theme: storedTheme(),
-    ui: { rightTab: 'blocks', drawer: null, dialog: null, palette: false, toasts: [] },
+    railOpen: storedRail(),
+    /* Always the transcript on load. Which page you were on is not worth
+       remembering across a reload: the story is the thing you came back for. */
+    page: 'story',
+    ui: { rightTab: null, drawer: null, dialog: null, palette: false, toasts: [] },
   };
 }
