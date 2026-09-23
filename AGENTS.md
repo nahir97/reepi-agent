@@ -99,6 +99,57 @@ Whenever a suggestion status changes:
 
 ---
 
+## The database is the product
+
+`data/reepi.sqlite` holds every story, transcript, character, memory and cost event.
+There is no server-side undo, and **SQLite cannot drop a constraint** — so a column
+added with the wrong shape stays wrong in every file that has already seen it, and the
+only repair is to rebuild the table with the rows copied back.
+
+That has happened once here: `stories.template_id` was briefly declared as a foreign
+key, which an existing file kept, and the fix was a `DROP`-and-`CREATE` done by hand.
+
+**Before any change that can alter the schema, run:**
+
+```bash
+npm run db:backup -- "what you are about to do"
+```
+
+That is the rule, and these are the mechanisms behind it:
+
+- **The server snapshots automatically before any additive migration** (`openDatabase`
+  detects pending columns, snapshots, then migrates). You do not have to remember for
+  the migrations `ADDITIVE_MIGRATIONS` can perform.
+- **You do have to remember for the ones it cannot.** Dropping a constraint, changing
+  a column's type or nullability, rebuilding a table, or editing a DDL constraint all
+  require a manual `db:backup` first — the automatic guard does not fire, because the
+  migration system only ever adds.
+- **Prefer a plain validated column to a foreign key.** A `REFERENCES` clause cannot be
+  removed later; check integrity in the application, where it can be changed.
+- **Never `rm` the database.** `npm run db:restore -- <file>` puts a snapshot back and
+  keeps the file it displaced as `<db>.replaced-<stamp>`; that is the only supported
+  way to move a database backwards.
+
+**A value that is rendered in a URL position is a request, not data.** A portrait
+stored as bare base64 made the browser ask the server for a 123 kB *path* and fail with
+a 431; the card fell back to initials and a character looked missing. When a field is
+used as a `src`, an `href` or a path, validate it at the write path and normalise what
+is already stored — `src/server/avatars.ts` and `npm run db:avatars` are the worked
+example. And a 4xx on an `<img>` request in the console is never noise: it means a card
+is rendering as initials.
+
+If a schema change goes wrong anyway:
+
+```bash
+npm run db:list                       # snapshots, newest first, with integrity checks
+npm run db:restore -- <file>          # put one back (keeps the current file)
+npm run db:verify                     # integrity, row counts, applied migrations
+```
+
+`npm run verify:store` pins all of this — including that a pending migration is
+detected, that the snapshot taken before it still has the *old* shape, and that a
+delete/restore round trip brings the row back.
+
 ## Documentation
 
 Keep the app documentation in sync with reality. When a change affects the project landscape, update the relevant docs in the same commit:

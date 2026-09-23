@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { createBackup, pruneBackups, startBackupSchedule, stopBackupSchedule } from './backup.ts';
 
 /**
  * SQLite access layer.
@@ -20,6 +21,20 @@ const DDL = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 PRAGMA synchronous = NORMAL;
+
+/*
+ * Every additive migration that has run against this file.
+ *
+ * The log line is the warning; this table is the record. Without it, the only way
+ * to answer "was this column added here, or did it come in with the file?" is to
+ * read the .sqlite-wal or a console that has long since scrolled away — and that
+ * question is exactly the one that matters when a column's *shape* is wrong, which
+ * no ALTER TABLE can fix.
+ */
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  name       TEXT PRIMARY KEY,
+  applied_at INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS stories (
   id              TEXT PRIMARY KEY,
@@ -402,16 +417,34 @@ function backfillHomeCast(handle: DatabaseSync): void {
   `);
 }
 
-function migrate(handle: DatabaseSync): void {
+/**
+ * Which additive columns are missing, without changing anything.
+ *
+ * Read before the migration so the caller can decide whether this boot is about to
+ * alter the schema — which is the only thing worth taking a snapshot for.
+ */
+function pendingMigrations(handle: DatabaseSync): string[] {
+  const pending: string[] = [];
   for (const migration of ADDITIVE_MIGRATIONS) {
-    const columns = handle
-      .prepare(`PRAGMA table_info(${migration.table})`)
-      .all() as { name: string }[];
-    // An empty result means the table does not exist yet and the DDL just created
-    // it with the column already present.
+    const columns = handle.prepare(`PRAGMA table_info(${migration.table})`).all() as { name: string }[];
+    /* An empty result means the table does not exist yet and the DDL just created it
+       with the column already present. */
     if (columns.length === 0) continue;
     if (columns.some((column) => column.name === migration.column)) continue;
+    pending.push(`${migration.table}.${migration.column}`);
+  }
+  return pending;
+}
+
+function migrate(handle: DatabaseSync, pending: readonly string[]): void {
+  for (const name of pending) {
+    const [table, column] = name.split('.') as [string, string];
+    const migration = ADDITIVE_MIGRATIONS.find(
+      (candidate) => candidate.table === table && candidate.column === column,
+    );
+    if (!migration) continue;
     handle.exec(`ALTER TABLE ${migration.table} ADD COLUMN ${migration.column} ${migration.ddl}`);
+    recordMigration(handle, name);
     console.log(`[reepi] migrated ${migration.table}.${migration.column}`);
   }
   replaceLegacyHomeColumn(handle);
@@ -419,15 +452,78 @@ function migrate(handle: DatabaseSync): void {
   handle.exec(POST_MIGRATION_INDEXES);
 }
 
+/**
+ * Note that a migration ran, once.
+ *
+ * Best-effort on purpose: a failure to write the ledger must not fail the boot that
+ * has otherwise succeeded. It is a record for a human, not a thing the code reads to
+ * decide what to do.
+ */
+function recordMigration(handle: DatabaseSync, name: string): void {
+  try {
+    handle
+      .prepare('INSERT OR IGNORE INTO schema_migrations (name, applied_at) VALUES (?, ?)')
+      .run(name, Date.now());
+  } catch (error) {
+    console.error(`[reepi] could not record migration ${name}: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+/** What has been applied to this file, oldest first. Read by `npm run db:verify`. */
+export function appliedMigrations(): string[] {
+  try {
+    const rows = getDb()
+      .prepare('SELECT name FROM schema_migrations ORDER BY applied_at')
+      .all() as { name: string }[];
+    return rows.map((row) => row.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Open (or create) the database, and leave a snapshot behind if the schema moved.
+ *
+ * The order is the whole point: **snapshot first, migrate second.** A migration is
+ * the one operation in this process that can destroy data, and until now nothing
+ * ran before it. The snapshot is only taken when a migration is actually pending —
+ * a normal boot costs one `PRAGMA table_info` per known column and no disk at all.
+ *
+ * A failure to back up is *not* fatal. Refusing to boot because the disk is full
+ * would turn "you have no backup" into "you have no app", and the writer's library
+ * is still on disk and readable; the loud line is the mitigation, and the operator
+ * can run `npm run db:backup` once the disk is sorted.
+ */
 export function openDatabase(path: string): DatabaseSync {
   if (db) return db;
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const handle = new DatabaseSync(path);
   handle.exec(DDL);
-  migrate(handle);
+
+  const pending = pendingMigrations(handle);
+  if (pending.length > 0 && path !== ':memory:' && existsSync(path)) {
+    try {
+      const { file, meta } = createBackup(path, `pre-migration: ${pending.join(', ')}`);
+      const pruned = pruneBackups(path);
+      console.log(
+        `[reepi] backup before migration: ${file} (${meta?.bytes ?? 0} bytes)${pruned.length ? `, pruned ${pruned.length}` : ''}`,
+      );
+    } catch (error) {
+      console.error(
+        `[reepi] COULD NOT BACK UP before migrating ${pending.join(', ')}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      console.error('[reepi] continuing — the library is intact — but run `npm run db:backup` and check the disk.');
+    }
+  }
+
+  migrate(handle, pending);
   db = handle;
+  startBackupSchedule(path);
   return handle;
 }
+
 
 export function getDb(): DatabaseSync {
   if (!db) throw new Error('Database not opened. Call openDatabase() during boot.');
@@ -435,6 +531,7 @@ export function getDb(): DatabaseSync {
 }
 
 export function closeDatabase(): void {
+  stopBackupSchedule();
   db?.close();
   db = null;
 }

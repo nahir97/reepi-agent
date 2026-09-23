@@ -351,6 +351,37 @@ Or build once and serve the build without rebuilding: `npm run build && npm star
 
 `npm run typecheck` runs `tsc --noEmit`.
 
+### Backups, and getting a database back
+
+The database is the whole product, so it snapshots itself before it changes shape.
+
+```bash
+npm run db:backup -- "what you are about to do"   # take one now (add -- verify)
+npm run db:list                                   # what exists, newest first
+npm run db:verify                                 # integrity, rows, applied migrations
+npm run db:restore -- <file>                      # put one back
+npm run db:avatars [-- --write]                   # repair portraits stored as bare base64
+```
+
+- **Before any schema migration, automatically.** `openDatabase` detects pending
+  additive columns, snapshots, *then* migrates — so the snapshot has the old shape,
+  which is the only shape worth having when a migration goes wrong.
+- **Snapshots are `VACUUM INTO` files**, not copies: WAL mode means a plain copy of
+  `reepi.sqlite` is missing the newest committed work, and the copy is the version of
+  "backup" most likely to be trusted and wrong.
+- **A restore verifies before it writes, keeps the file it displaced** as
+  `<db>.replaced-<stamp>`, clears the stale `-wal`/`-shm` first, and consumes its
+  snapshot — so a second restore can never quietly reuse a stale copy.
+- **The newest 12 are kept**, and the newest is never pruned even at a limit of zero.
+- **`REEPI_BACKUP_EVERY_MINUTES=30`** adds a periodic snapshot for unattended installs;
+  it is off by default. Settings has a **Safety** section that says how many snapshots
+  exist, how old the newest is, whether it still passes its integrity check, and offers
+  one button to take another.
+
+**A schema change that cannot be done with `ALTER TABLE ADD COLUMN` needs its own
+`db:backup` first** — the automatic guard cannot know a table rebuild is coming. See
+*The database is the product* in `AGENTS.md`.
+
 ### Verification
 
 Three checks exist, each proving one thing that is easy to break silently:
@@ -367,8 +398,10 @@ hit rate next to the API's own measured one. A three-turn run costs a few tenths
 on `deepseek-flash` off-peak.
 
 `npm run verify:store` and `npm run verify:tx` are instant and need no key. Run both after touching
-`db.ts`, `store/`, or the bundle recreation path — they cover the two invariants that a
-refactor is most likely to break quietly.
+`db.ts`, `store/`, or the bundle recreation path — they cover the three invariants that a
+refactor is most likely to break quietly. `verify:store` also pins the backup guard: that a
+pending migration is detected before it runs, that the snapshot taken then still has the old
+shape, and that a delete/restore round trip brings the row back.
 
 `npm run verify:notes` checks the Agent Note corpus in `.agents/notes/`: the lifecycle and
 class tree, the header block, required sections per lifecycle, inter-note links, and duplicate
@@ -458,7 +491,8 @@ src/
     tokens.ts        estimator + self-calibrating EWMA correction
     text.ts          browser-safe string helpers (no node: imports)
   server/
-    db.ts            schema, additive migrations, transaction()
+    db.ts            schema, additive migrations, the pre-migration snapshot, transaction()
+    backup.ts        VACUUM INTO snapshots, rotation, verification, the one restore path
     store/           the DAO modules behind index.ts — mapper lives beside its DAO
     deepseek.ts      SSE client, usage/cache accounting, retries
     composer.ts      the block-ordered, cache-stable payload builder; expands macros
@@ -479,6 +513,7 @@ src/
       memory.ts      memories, recall
       portability.ts export/import: JSON, markdown, chara v2 PNG
       insights.ts    the cost ledger read model
+      backups.ts    GET/POST /backups: what exists, and one button to take another
   web/
     App.tsx          shell: centre column routing (transcript or a page), rails
     store.ts         barrel over store/ — one zustand store, assembled from slices

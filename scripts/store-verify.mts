@@ -6,13 +6,16 @@
  * database, and that the cross-cutting read still assembles a whole bundle.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 const dir = mkdtempSync(join(tmpdir(), 'reepi-store-'));
 const { openDatabase, closeDatabase, getDb } = await import('../src/server/db.ts');
+const existsSyncSync = existsSync;
+const writeFileSyncSync = writeFileSync;
+const resolveSync = resolve;
 const {
   stories, scenes, characters, cast, personas, lore, messages, memories, notes, threads,
   ledger, prefixes, settings, warmups, templates, creator, loadStoryBundle, resolvePersona,
@@ -570,6 +573,202 @@ openDatabase(legacyPath);
 check('re-opening the database keeps the home story', characters.get('c1')?.homeStoryId === 's1');
 check('re-opening does not duplicate the membership', cast.all().filter((entry) => entry.characterId === 'c1').length === 1);
 check('re-opening leaves one row in the card table', characters.list().length === 1);
+
+/* --- backups ---------------------------------------------------------------
+ *
+ * The claim a backup system has to earn is not "it writes a file" — it is "the file
+ * can be put back". So this snapshots a known database, destroys the thing it
+ * proves, restores, and reads the proof back out of the restored file. A backup
+ * suite that only checks the file exists is the failure mode worth pinning. */
+const backupTarget = join(dir, 'backup.sqlite');
+closeDatabase();
+const { createBackup, listBackups, pruneBackups, restoreBackup, verifyBackup, backupDirFor } = await import(
+  '../src/server/backup.ts'
+);
+openDatabase(backupTarget);
+const beforeBackup = stories.create({ title: 'Inside the snapshot', bible: 'kept' });
+const snapshot = createBackup(backupTarget, 'store-verify');
+check('a snapshot is written', existsSyncSync(snapshot.path));
+check("a snapshot passes SQLite's own integrity check", snapshot.meta?.integrity === 'ok');
+check('snapshot metadata names the tables it holds', (snapshot.meta?.tables ?? []).includes('stories'));
+check('snapshot metadata counts the rows', (snapshot.meta?.counts?.['stories'] ?? 0) >= 1);
+check('verifyBackup accepts a good snapshot', verifyBackup(snapshot.path).ok);
+check('listBackups finds it', listBackups(backupTarget).some((entry) => entry.file === snapshot.file));
+
+/* Change the live database in the most destructive way available, then restore. */
+stories.remove(beforeBackup.id);
+check('the story is gone before the restore', stories.get(beforeBackup.id) === null);
+closeDatabase();
+
+const restoredResult = restoreBackup(backupTarget, snapshot.path);
+openDatabase(backupTarget);
+check('the restore puts the file back at the database path', restoredResult.restored === resolveSync(backupTarget) && existsSyncSync(backupTarget));
+check('the displaced file is kept, not deleted', existsSyncSync(restoredResult.displaced));
+check('a deleted row comes back', stories.get(beforeBackup.id)?.title === 'Inside the snapshot');
+check('its columns come back too', stories.get(beforeBackup.id)?.bible === 'kept');
+check(
+  'the restored database has no dangling foreign keys',
+  (getDb().prepare('PRAGMA foreign_key_check').all() as unknown[]).length === 0,
+);
+closeDatabase();
+
+/* A corrupt file must be refused rather than restored over a working database. */
+const corrupt = join(dir, 'corrupt.sqlite');
+writeFileSyncSync(corrupt, 'this is not a sqlite file');
+check('verifyBackup rejects a file that is not a database', verifyBackup(corrupt).ok === false);
+let refused = false;
+try {
+  restoreBackup(backupTarget, corrupt);
+} catch {
+  refused = true;
+}
+check('restore refuses a snapshot that fails verification', refused);
+
+/* A restore *consumes* the snapshot it restores — it moves the file into place, so
+   that file is no longer a backup. That is deliberate (see the module: a restore is
+   the only operation that can lose the writer's most recent work, so the snapshot
+   must not be left where a second restore could silently reuse a stale copy) and it
+   is why this counts from here rather than assuming the first one is still there. */
+check('the restored snapshot is no longer in the backup folder', listBackups(backupTarget).length === 0);
+
+/* Rotation never empties the folder, however small the limit. Three snapshots, a
+   limit of zero: two must go and the newest must stay. */
+openDatabase(backupTarget);
+createBackup(backupTarget, 'second');
+createBackup(backupTarget, 'third');
+createBackup(backupTarget, 'fourth');
+closeDatabase();
+check('three snapshots exist before pruning', listBackups(backupTarget).length === 3);
+const pruned = pruneBackups(backupTarget, 0);
+check('prune removes the older snapshots', pruned.length === 2);
+check('prune keeps the newest even at zero', listBackups(backupTarget).length === 1);
+check('the backups live beside the database', backupDirFor(backupTarget).includes('backups'));
+
+/* --- avatars ---------------------------------------------------------------
+ *
+ * An avatar is rendered in an `<img src>`, so a value that is not a URL is a request
+ * the browser makes. The app used to store bare base64 — which made it ask for a
+ * 123 kB path and fail with a 431, so every portrait set through the editor fell back
+ * to initials and a character looked missing. These pin the reader that fixes that
+ * and the doors that now refuse anything else.
+ */
+const { normalizeAvatar, isRenderableAvatar, sniffImageType } = await import('../src/server/avatars.ts');
+const { sanitiseCharacter, sanitisePersona } = await import('../src/server/routes/library/sanitise.ts');
+
+/** A minimal but *real* PNG: the magic bytes are what the type is read from. */
+const pngBase64 = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64');
+const jpegBase64 = Buffer.from('ffd8ffe000104a46494600010100000100010000', 'hex').toString('base64');
+
+check('sniffImageType reads a PNG', sniffImageType(Buffer.from(pngBase64, 'base64')) === 'image/png');
+check('sniffImageType reads a JPEG', sniffImageType(Buffer.from(jpegBase64, 'base64')) === 'image/jpeg');
+check('sniffImageType refuses other bytes', sniffImageType(Buffer.from('not an image at all', 'utf8')) === null);
+
+check('a data URL is left alone', normalizeAvatar('data:image/png;base64,AAAA').value === 'data:image/png;base64,AAAA');
+check('an http URL is left alone', normalizeAvatar('https://example.test/a.png').value === 'https://example.test/a.png');
+check('`none` becomes null', normalizeAvatar('none').value === null);
+check('null stays null', normalizeAvatar(null).value === null);
+
+const repairedPng = normalizeAvatar(pngBase64);
+check(
+  'prefixless base64 is repaired into a data URL of the sniffed type',
+  repairedPng.ok && repairedPng.value === `data:image/png;base64,${pngBase64}`,
+  repairedPng.ok ? String(repairedPng.value).slice(0, 40) : 'refused',
+);
+check('and it is reported as a repair', repairedPng.ok && repairedPng.repaired === true);
+const repairedJpeg = normalizeAvatar(jpegBase64);
+check('a JPEG is repaired as a JPEG', repairedJpeg.ok && repairedJpeg.value?.startsWith('data:image/jpeg;base64,'));
+
+check('base64 that is not an image is refused', normalizeAvatar('aGVsbG8gd29ybGQ=').ok === false);
+check('a bare path is refused', normalizeAvatar('portrait.png').ok === false);
+check('a javascript: URL is refused', normalizeAvatar('javascript:alert(1)').ok === false);
+check('the repaired value renders', repairedPng.ok && repairedPng.value !== null && isRenderableAvatar(repairedPng.value));
+
+/* The write path. A character card saved with bare base64 — which is precisely the
+   shape the editor used to produce — is repaired on the way in; garbage is rejected
+   rather than stored as a portrait nothing can show. */
+const bareSaved = sanitiseCharacter({ name: 'A', avatar: pngBase64 });
+check(
+  'the character PATCH path repairs a prefixless avatar',
+  bareSaved.patch.avatar === `data:image/png;base64,${pngBase64}`,
+  String(bareSaved.patch.avatar).slice(0, 32),
+);
+check('the persona PATCH path repairs one too', sanitisePersona({ avatar: jpegBase64 }).patch.avatar?.startsWith('data:image/jpeg;base64,') === true);
+check('both paths refuse a non-image avatar', sanitiseCharacter({ avatar: 'portrait.png' }).rejected.length === 1 && sanitisePersona({ avatar: 'portrait.png' }).rejected.length === 1);
+check('both paths still accept null, to remove a portrait', sanitiseCharacter({ avatar: null }).patch.avatar === null && sanitisePersona({ avatar: null }).patch.avatar === null);
+check('a good data URL passes through unchanged', sanitiseCharacter({ avatar: 'data:image/webp;base64,AAAA' }).patch.avatar === 'data:image/webp;base64,AAAA');
+
+/* --- the migration guard ---------------------------------------------------
+ *
+ * The failure this whole module exists for: an additive migration changes the
+ * schema, and the file it ran against cannot be recovered. Two things are pinned
+ * here — that a pending migration is noticed *before* it runs, and that the boot
+ * leaves a snapshot behind when it is.
+ */
+const guardTarget = join(dir, 'guard.sqlite');
+{
+  openDatabase(guardTarget);
+  closeDatabase();
+
+  /* Rebuild `stories` exactly as it is, minus `template_id` — "the file predates
+     the column". The column list comes from PRAGMA rather than a hand-written
+     CREATE, so this test cannot drift from the schema it is pretending to be old.
+     Dependencies are dropped and restored because that is what a table rebuild
+     costs in SQLite; the point of the test is the *boot* that follows, not this. */
+  const raw = new DatabaseSync(guardTarget);
+  const columns = raw.prepare('PRAGMA table_info(stories)').all() as { name: string; type: string; dflt_value: string | null; pk: number }[];
+  const keep = columns.filter((column) => column.name !== 'template_id');
+  raw.exec('PRAGMA foreign_keys = OFF');
+  raw.exec('DROP TABLE scenes');
+  raw.exec('DROP TABLE story_cast');
+  raw.exec("CREATE TABLE stories_new AS SELECT 1 AS id");
+  raw.exec('DROP TABLE stories_new');
+  raw.exec(
+    `CREATE TABLE stories_new (${keep
+      .map((column) => `"${column.name}" ${column.type}${column.pk ? ' PRIMARY KEY' : ''}${column.dflt_value ? ` DEFAULT ${column.dflt_value}` : ''}`)
+      .join(', ')})`,
+  );
+  raw.exec(`INSERT INTO stories_new SELECT ${keep.map((column) => `"${column.name}"`).join(', ')} FROM stories`);
+  raw.exec('DROP TABLE stories');
+  raw.exec('ALTER TABLE stories_new RENAME TO stories');
+  raw.close();
+
+  const { backupDirFor: dirOf } = await import('../src/server/backup.ts');
+  rmSync(dirOf(guardTarget), { recursive: true, force: true });
+
+  /* Booting this file must migrate it *and* leave a pre-migration snapshot. */
+  openDatabase(guardTarget);
+  check(
+    'a pending migration is applied on boot',
+    (getDb().prepare('PRAGMA table_info(stories)').all() as { name: string }[]).some(
+      (column) => column.name === 'template_id',
+    ),
+  );
+  const guardBackups = listBackups(guardTarget);
+  check('the boot snapshots before migrating', guardBackups.length === 1);
+  check(
+    'the snapshot says why it was taken',
+    (guardBackups[0]?.meta?.reason ?? '').includes('pre-migration'),
+    guardBackups[0]?.meta?.reason ?? 'no reason',
+  );
+  check(
+    'the snapshot predates the migration, so it still has the old shape',
+    (() => {
+      const snap = new DatabaseSync(guardBackups[0]!.path, { readOnly: true });
+      const hasColumn = (snap.prepare('PRAGMA table_info(stories)').all() as { name: string }[]).some(
+        (column) => column.name === 'template_id',
+      );
+      snap.close();
+      return hasColumn === false;
+    })(),
+  );
+  check(
+    'the applied migration is recorded in the ledger',
+    (getDb().prepare('SELECT name FROM schema_migrations').all() as { name: string }[]).some((row) =>
+      row.name.includes('template_id'),
+    ),
+  );
+  closeDatabase();
+}
 
 const failed = checks.filter(([, ok]) => !ok);
 for (const [name, ok, detail] of checks) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`);

@@ -17,7 +17,12 @@
     "verify:store": "node scripts/store-verify.mts",
     "verify:tx": "node scripts/tx-verify.mts",
     "typecheck": "tsc --noEmit",
-    "verify:notes": "node scripts/verify-notes.mts"
+    "verify:notes": "node scripts/verify-notes.mts",
+    "db:backup": "node scripts/db.mts backup",
+    "db:list": "node scripts/db.mts list",
+    "db:verify": "node scripts/db.mts verify",
+    "db:restore": "node scripts/db.mts restore",
+    "db:avatars": "node scripts/repair-avatars.mts"
   },
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.1.1",

@@ -7,6 +7,7 @@
  */
 
 import { asInt, asString, pickPatch } from '../../http.ts';
+import { normalizeAvatar } from '../../avatars.ts';
 import { MEMORY_KINDS, NOTE_KINDS, isEditableBlock } from '../../../shared/types.ts';
 import type { PromptTemplateBody } from '../../../shared/api.ts';
 import type {
@@ -164,9 +165,14 @@ export function sanitiseCharacter(raw: Partial<Character>): Sanitised<Character>
     if (typeof value === 'string') patch[field] = value;
     else rejected.push(field);
   }
+  /* An avatar is rendered in an `<img src>`, so a value that is not a URL is a
+     *request* the browser makes — and bare base64 makes it ask for a 123 kB path and
+     fail with a 431. The reader normalises the shapes this app has really stored and
+     refuses the rest, rather than persisting a portrait that cannot be shown. */
   if (picked.avatar !== undefined) {
-    if (typeof picked.avatar === 'string' || picked.avatar === null) patch.avatar = picked.avatar;
-    else rejected.push('avatar');
+    const verdict = normalizeAvatar(picked.avatar);
+    if (verdict.ok) patch.avatar = verdict.value;
+    else rejected.push(`avatar (${verdict.reason})`);
   }
   if (picked.meta !== undefined) {
     const meta = objectOf(picked.meta);
@@ -197,9 +203,14 @@ export function sanitisePersona(raw: Partial<Persona>): Sanitised<Persona> {
     if (typeof picked.description === 'string') patch.description = picked.description;
     else rejected.push('description');
   }
+  /* An avatar is rendered in an `<img src>`, so a value that is not a URL is a
+     *request* the browser makes — and bare base64 makes it ask for a 123 kB path and
+     fail with a 431. The reader normalises the shapes this app has really stored and
+     refuses the rest, rather than persisting a portrait that cannot be shown. */
   if (picked.avatar !== undefined) {
-    if (typeof picked.avatar === 'string' || picked.avatar === null) patch.avatar = picked.avatar;
-    else rejected.push('avatar');
+    const verdict = normalizeAvatar(picked.avatar);
+    if (verdict.ok) patch.avatar = verdict.value;
+    else rejected.push(`avatar (${verdict.reason})`);
   }
   if (picked.isDefault !== undefined) {
     if (typeof picked.isDefault === 'boolean') patch.isDefault = picked.isDefault;

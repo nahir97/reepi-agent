@@ -9,6 +9,7 @@
 
 import type {
   AccountInfo,
+  BackupsInfo,
   ArchivistResult,
   BranchBody,
   CastIndex,
@@ -460,6 +461,17 @@ export const api = {
   importBundle: (body: ImportBody, signal?: AbortSignal) =>
     send<Story>('/api/import', json('POST', body, signal)),
 
+  /* -------------------------------------------------------------- backups */
+
+  backups: {
+    list: (signal?: AbortSignal) => send<BackupsInfo>('/api/backups', json('GET', undefined, signal)),
+    take: (reason?: string, signal?: AbortSignal) =>
+      send<{ ok: true; file: string; bytes: number; pruned: string[] }>(
+        '/api/backups',
+        json('POST', reason ? { reason } : {}, signal),
+      ),
+  },
+
   /* ---------------------------------------------------- prompt templates */
 
   templates: {
@@ -519,6 +531,14 @@ export async function downloadExport(
 }
 
 /** Base64 (no data: prefix) for the `chara` PNG import path. */
+/**
+ * Raw base64, with no data-URL prefix.
+ *
+ * For the card *importer*, which is asking the server to read the bytes: that
+ * provider's format wants base64, and a `data:` prefix would become part of the
+ * payload. Anything destined for an `<img src>` wants `fileToDataUrl` instead —
+ * this value is not a URL, and treating it as one is how a portrait became a 431.
+ */
 export async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -528,6 +548,18 @@ export async function fileToBase64(file: File): Promise<string> {
     binary += String.fromCharCode(...bytes.subarray(index, index + step));
   }
   return btoa(binary);
+}
+
+/**
+ * A data URL, for anything the browser will render.
+ *
+ * The portrait control stores one of these. The prefix comes from the file's own
+ * MIME type rather than being guessed; a missing type falls back to `image/png`,
+ * which still renders and matches bytes the picker already checked are an image.
+ */
+export async function fileToDataUrl(file: File): Promise<string> {
+  const base64 = await fileToBase64(file);
+  return `data:${file.type || 'image/png'};base64,${base64}`;
 }
 
 /** Turn any thrown value into a toast-ready sentence. */

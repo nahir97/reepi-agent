@@ -26,6 +26,7 @@ import { alternateGreetingsOf, greetingOf } from '../shared/greetings.ts';
 import { hashContent, parseKeys } from '../shared/ids.ts';
 import type { Character, LoreEntry, LorePosition, Story } from '../shared/types.ts';
 import { lore, messages } from './store/index.ts';
+import { normalizeAvatar } from './avatars.ts';
 
 /* ------------------------------------------------------------------- types */
 
@@ -446,7 +447,11 @@ function metaString(meta: Record<string, unknown>, key: string): string | null {
 /** Card → domain. The raw card rides along in `meta` so nothing is lost. */
 export function cardToCharacter(card: CharacterCardV2): CardCharacter {
   const data = card.data;
-  const avatar = str(data['avatar']).trim();
+  /* A card in the wild may carry a raw base64 portrait or the word `none`. The stored
+     value has to be renderable, so the verdict decides: a repair keeps the portrait, a
+     refusal drops it. The original text stays in `meta.card`, so export still
+     round-trips byte-for-byte whatever this decides. */
+  const cardAvatar = normalizeAvatar(str(data['avatar']));
   return {
     name: data.name,
     // The card format has no home for a tagline or a speech-style note, so both
@@ -457,7 +462,7 @@ export function cardToCharacter(card: CharacterCardV2): CardCharacter {
     speech: str(data.extensions['reepi_speech']),
     scenario: data.scenario,
     exampleDialogue: data.mes_example,
-    avatar: avatar && avatar !== 'none' ? avatar : null,
+    avatar: cardAvatar.ok ? cardAvatar.value : null,
     meta: {
       card,
       tags: data.tags,

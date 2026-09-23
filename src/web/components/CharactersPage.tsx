@@ -20,7 +20,7 @@
  * character cannot look like three different things in three places.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Character, Persona, Story } from '../../shared/types.ts';
 import { useStore, type CardKind } from '../store.ts';
 import { PageBand } from './panel.tsx';
@@ -76,6 +76,15 @@ export function CharactersPage() {
   const [scope, setScope] = useState<Scope>('character');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortKey>('recent');
+
+  /* The library is app-scoped and only fetched when a surface asks for it. This page
+     *is* that surface for the roster, so it asks — without this it rendered "No
+     characters yet" while the load it never started was still pending, which is how a
+     library of six cards looked empty and a character the writer knew about looked
+     missing. */
+  useEffect(() => {
+    void loadCastLibrary();
+  }, [loadCastLibrary]);
 
   const storyId = bundle?.story.id ?? null;
   const isChat = Boolean(bundle?.story.characterId);

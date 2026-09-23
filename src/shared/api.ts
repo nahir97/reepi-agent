@@ -55,6 +55,34 @@ export type CastIndex = {
   casts: { storyId: string; characterId: string }[];
 };
 
+/**
+ * One snapshot beside the live database.
+ *
+ * No filesystem path: the client has no use for one, and a path is a piece of the
+ * server this contract has no business carrying. `integrity` is SQLite's own
+ * verdict, read when this is fetched rather than when the file was written — a
+ * snapshot that has rotted since must not report `ok`.
+ */
+export type BackupReport = {
+  file: string;
+  at: string | null;
+  reason: string;
+  bytes: number;
+  integrity: string;
+  counts: Record<string, number>;
+};
+
+export type BackupsInfo = {
+  /** The folder's own name, not its path — enough to tell deployments apart. */
+  folder: string;
+  /** How many snapshots the rotation keeps. */
+  keeps: number;
+  /** Minutes between automatic snapshots, or `null` when none is scheduled. */
+  scheduledMinutes: number | null;
+  count: number;
+  snapshots: BackupReport[];
+};
+
 /** Adding an existing card to a story's cast. */
 export type CastAttachBody = { characterId: string };
 

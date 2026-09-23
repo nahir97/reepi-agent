@@ -29,6 +29,7 @@ import memoryRoutes from './routes/memory.ts';
 import portabilityRoutes from './routes/portability.ts';
 import insightsRoutes from './routes/insights.ts';
 import templateRoutes from './routes/templates.ts';
+import backupRoutes, { useDatabase } from './routes/backups.ts';
 
 /**
  * Reepi server.
@@ -42,6 +43,10 @@ const HOST = process.env.REEPI_HOST ?? '127.0.0.1';
 const DB_PATH = process.env.REEPI_DB ?? 'data/reepi.sqlite';
 const VERSION = '1.0.0';
 
+/* Tell the backup routes which file they are protecting, at the same moment the
+   file is opened — one resolution of the path, so the API and the connection can
+   never disagree about which database is the live one. */
+useDatabase(DB_PATH);
 openDatabase(DB_PATH);
 
 const app = new Hono();
@@ -115,6 +120,7 @@ app.route('/api', memoryRoutes);
 app.route('/api', portabilityRoutes);
 app.route('/api', insightsRoutes);
 app.route('/api', templateRoutes);
+app.route('/api', backupRoutes);
 
 /* ------------------------------------------------------------ static */
 

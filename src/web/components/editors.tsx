@@ -13,7 +13,7 @@ import { formatTokens } from '../../shared/cost.ts';
 import { greetingSlotsOf, withAlternates, withOpening } from '../../shared/greetings.ts';
 import type { Character, Persona } from '../../shared/types.ts';
 import { estimateTokens } from '../../shared/tokens.ts';
-import { api, fileToBase64 } from '../api.ts';
+import { api, fileToDataUrl } from '../api.ts';
 import { useStore } from '../store.ts';
 import type { CardKind } from '../store.ts';
 import { Avatar } from './Avatar.tsx';
@@ -83,7 +83,7 @@ function AvatarField({
     }
 
     try {
-      onPick(await fileToBase64(file));
+      onPick(await fileToDataUrl(file));
     } catch {
       toast({ kind: 'error', title: 'Could not read that file' });
     }
