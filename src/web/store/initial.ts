@@ -126,6 +126,7 @@ export function initialState(): Omit<
   | 'setCreatorTarget'
   | 'createCard'
   | 'startChatWith'
+  | 'openChatWith'
   | 'loadCastLibrary'
   | 'refreshCastLibrary'
   | 'addToCast'

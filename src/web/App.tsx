@@ -180,7 +180,9 @@ export function App() {
       {dialog?.kind === 'story-settings' ? <StorySettingsDialog /> : null}
       {dialog?.kind === 'import-export' ? <ImportExportDialog /> : null}
       {dialog?.kind === 'new-story' ? <NewStoryDialog /> : null}
-      {dialog?.kind === 'new-chat' ? <NewChatDialog characterId={dialog.characterId} /> : null}
+      {dialog?.kind === 'new-chat' ? (
+        <NewChatDialog characterId={dialog.characterId} fromStoryId={dialog.fromStoryId} />
+      ) : null}
       {dialog?.kind === 'payload' ? <PayloadDialog /> : null}
       {dialog?.kind === 'prompt-templates' ? <PromptTemplatesDialog /> : null}
       {dialog?.kind === 'insights' ? <InsightsDialog /> : null}

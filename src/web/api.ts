@@ -299,12 +299,18 @@ export const api = {
      * conversation — the caller then opens the chat that already exists.
      *
      * `fromStoryId` is only needed for a card whose home story is gone: it names
-     * the story that casts the card and lends the chat its world.
+     * the story that casts the card and lends the chat its world. `greeting` is an
+     * index into the card's usable greetings, choosing which opening line seeds
+     * the transcript; omitted means the opening line.
      */
-    startChat: (characterId: string, fromStoryId?: string, signal?: AbortSignal) =>
+    startChat: (characterId: string, fromStoryId?: string, greeting?: number, signal?: AbortSignal) =>
       send<Story>(
         `/api/characters/${enc(characterId)}/chat`,
-        json('POST', fromStoryId ? { fromStoryId } : {}, signal),
+        json(
+          'POST',
+          { ...(fromStoryId ? { fromStoryId } : {}), ...(greeting !== undefined ? { greeting } : {}) },
+          signal,
+        ),
       ),
   },
 

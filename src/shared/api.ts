@@ -58,8 +58,13 @@ export type CastIndex = {
 /** Adding an existing card to a story's cast. */
 export type CastAttachBody = { characterId: string };
 
-/** Starting a chat from a card that has no home story left to draw a world from. */
-export type StartChatBody = { fromStoryId?: string };
+/**
+ * Starting a chat. `fromStoryId` lends a world to a card whose home story is
+ * gone; `greeting` is an index into the card's usable greetings
+ * (`greetingsOf(character)`), choosing which opening line seeds the transcript —
+ * omitted means the card's opening line.
+ */
+export type StartChatBody = { fromStoryId?: string; greeting?: number };
 
 export type Insights = {
   totals: {

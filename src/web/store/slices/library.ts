@@ -11,6 +11,7 @@
  * problem instead of hanging on a splash screen.
  */
 import { api, describeError, ApiError } from '../../api.ts';
+import { greetingsOf } from '../../../shared/greetings.ts';
 import { IDLE_STREAM, RAIL_KEY, rememberStory, storedLastStory } from '../initial.ts';
 import { bumpStreamSeq } from '../runtime.ts';
 import { applyTheme, persistTheme, storedTheme, isTheme } from '../theme.ts';
@@ -21,7 +22,7 @@ import type { Story, Scene, Theme } from '../../../shared/types.ts';
 import type { StoryTemplateId } from '../../../shared/api.ts';
 export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setTheme' | 'setStoryTheme' | 'loadStories' | 'loadStoryStats' | 'openStory' | 'refreshBundle' |
   'createStory' | 'duplicateStory' | 'archiveStory' | 'updateStory' | 'createScene' | 'switchScene' |
-  'updateScene' | 'archiveScene' | 'createCard' | 'startChatWith' | 'loadCastLibrary' | 'refreshCastLibrary' |
+  'updateScene' | 'archiveScene' | 'createCard' | 'startChatWith' | 'openChatWith' | 'loadCastLibrary' | 'refreshCastLibrary' |
   'addToCast' | 'removeFromCast' | 'setRightTab' | 'setRailOpen' | 'setAppliedTemplate' | 'setPage' |
   'setMessageFilter' | 'setMessageSearchOpen' | 'setDrawer' |
   'openDialog' | 'setPalette' | 'toast' | 'dismissToast' | 'fail'> {
@@ -385,7 +386,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
      * is opened *from* the cast page, and `openStory` deliberately does not move
      * the centre column on its own.
      */
-    startChatWith: async (characterId, fromStoryId) => {
+    startChatWith: async (characterId, fromStoryId, greeting) => {
       const existing = get().stories.find((story) => story.characterId === characterId);
       if (existing) {
         await get().openStory(existing.id);
@@ -393,7 +394,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       }
 
       try {
-        const chat = await api.characters.startChat(characterId, fromStoryId);
+        const chat = await api.characters.startChat(characterId, fromStoryId, greeting);
         set({ stories: [chat, ...get().stories] });
         await get().openStory(chat.id);
         get().toast({ kind: 'ok', title: 'Chat open', detail: chat.title });
@@ -410,6 +411,37 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
         }
         get().fail(error, 'Could not start the chat');
       }
+    },
+
+    /**
+     * The card's own start gesture: one click for a card with one opening line,
+     * a choice when it has several.
+     *
+     * The card is looked up rather than passed because the three rosters that own
+     * this gesture hold different shapes — a full card on Discover, a joined entry
+     * on the cast and character pages — and the greeting count is a property of the
+     * card, not of any one of them. A card neither list knows falls through to the
+     * ordinary start: seeding the opening line is always a legitimate answer, and a
+     * picker over nothing would not be.
+     */
+    openChatWith: async (characterId, fromStoryId) => {
+      const existing = get().stories.find((story) => story.characterId === characterId);
+      if (existing) {
+        await get().openStory(existing.id);
+        return;
+      }
+
+      const card =
+        get().castLibrary?.characters.find((candidate) => candidate.id === characterId) ??
+        get().bundle?.characters.find((candidate) => candidate.id === characterId) ??
+        null;
+
+      if (card && greetingsOf(card).length > 1) {
+        get().openDialog({ kind: 'new-chat', characterId, fromStoryId });
+        return;
+      }
+
+      await get().startChatWith(characterId, fromStoryId);
     },
 
     setRightTab: (rightTab) => set({ ui: { ...get().ui, rightTab } }),

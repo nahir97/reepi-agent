@@ -35,8 +35,10 @@ is the whole link, and everything else about a chat is borrowed or derived:
   [the cast is a library](2026-09-22-cast-is-a-library.md).)*
 - **Seed: the world, never the transcript.** Starting a chat copies the directive blocks
   (contract, genre, style, bible, scenario, exemplars), the writing settings (model, effort,
-  sampling, budgets, prefill, theme) and the **anchored** lore, then seeds the card's greeting
-  as the opening turn. Turns, memories, threads, notes and synopsis do not come along;
+  sampling, budgets, prefill, theme) and the **anchored** lore, then seeds one of the card's
+  greetings — the writer's choice when it has more than one — as the opening turn
+  ([greeting lines are authored and chosen](2026-09-23-greeting-lines-are-authored-and-chosen.md)).
+  Turns, memories, threads, notes and synopsis do not come along;
   `instruct` does not either, because it is a directive about the turn being written rather
   than a fact about the world.
 - **One chat per character**, enforced twice: `startChat` hands back the existing chat instead

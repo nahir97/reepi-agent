@@ -145,8 +145,22 @@ export const characters = {
     const existing = characters.get(id);
     if (!existing) return null;
     /* `homeStoryId` is deliberately not patchable: a card's origin is set once,
-       and re-homing it would silently move the world its chat draws from. */
-    const merged: Character = { ...existing, ...patch, id, homeStoryId: existing.homeStoryId, updatedAt: Date.now() };
+       and re-homing it would silently move the world its chat draws from.
+
+       `meta` **merges** rather than replaces. It is the card's freeform blob, so a
+       patch that names one key (`first_mes`, an alternate greeting, a tag) is a
+       statement about that key, not about the whole card — and replacing would let
+       two saves racing from one editor drop whichever key the slower one still
+       held. Import sets the whole blob once, at creation, which is the only place
+       a full replacement was ever meant. */
+    const merged: Character = {
+      ...existing,
+      ...patch,
+      id,
+      homeStoryId: existing.homeStoryId,
+      meta: patch.meta ? { ...existing.meta, ...patch.meta } : existing.meta,
+      updatedAt: Date.now(),
+    };
     merged.tokens = characterCardTokens(merged);
 
     getDb()

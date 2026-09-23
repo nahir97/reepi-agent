@@ -349,9 +349,9 @@ function CharacterCard({
   chat: { id: string } | null;
   castHere: Set<string>;
 }) {
-  const startChatWith = useStore((state) => state.startChatWith);
   const openStory = useStore((state) => state.openStory);
   const openDialog = useStore((state) => state.openDialog);
+  const openChatWith = useStore((state) => state.openChatWith);
   const tags = characterTags(character);
 
   /* The card outlived its home story and is cast nowhere, so there is no world
@@ -387,7 +387,7 @@ function CharacterCard({
           ? () => undefined
           : chat
             ? () => void openStory(chat.id)
-            : () => void startChatWith(character.id)
+            : () => void openChatWith(character.id)
       }
       openLabel={chat ? 'Resume' : 'New chat'}
       openBlockedReason={

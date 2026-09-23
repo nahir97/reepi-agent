@@ -66,7 +66,7 @@ export function CharactersPage() {
   const loadCastLibrary = useStore((state) => state.loadCastLibrary);
   const setPage = useStore((state) => state.setPage);
   const openStory = useStore((state) => state.openStory);
-  const startChatWith = useStore((state) => state.startChatWith);
+  const openChatWith = useStore((state) => state.openChatWith);
   const addToCast = useStore((state) => state.addToCast);
   const removeFromCast = useStore((state) => state.removeFromCast);
   const createCard = useStore((state) => state.createCard);
@@ -318,7 +318,7 @@ export function CharactersPage() {
                           storyTitle={bundle?.story.title ?? ''}
                           canCast={canCast}
                           inChat={isChat}
-                          onOpen={() => (entry.chat ? void openStory(entry.chat.id) : void startChatWith(entry.id))}
+                          onOpen={() => (entry.chat ? void openStory(entry.chat.id) : void openChatWith(entry.id))}
                           onEdit={() => openDialog({ kind: 'card', card: 'character', id: entry.id })}
                           onAdd={() => void addToCast(entry.id)}
                           onRemove={() => void removeFromCast(entry.id)}

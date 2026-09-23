@@ -22,6 +22,7 @@
  */
 
 import { deflateSync, inflateSync } from 'node:zlib';
+import { alternateGreetingsOf, greetingOf } from '../shared/greetings.ts';
 import { hashContent, parseKeys } from '../shared/ids.ts';
 import type { Character, LoreEntry, LorePosition, Story } from '../shared/types.ts';
 import { lore, messages } from './store/index.ts';
@@ -442,18 +443,6 @@ function metaString(meta: Record<string, unknown>, key: string): string | null {
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
-/**
- * The line a card opens with, wherever it lives.
- *
- * An imported card carries it in `meta.first_mes`; a card written here has it as
- * the story's opening `greeting` message. One definition, because two readers need
- * it and they must agree: the export path below has to put the line back on the
- * card, and starting a character chat seeds the same line into the new transcript.
- */
-export function greetingOf(character: Character): string {
-  return metaString(character.meta, 'first_mes') ?? '';
-}
-
 /** Card → domain. The raw card rides along in `meta` so nothing is lost. */
 export function cardToCharacter(card: CharacterCardV2): CardCharacter {
   const data = card.data;
@@ -555,7 +544,9 @@ export function characterToCard(character: Character, story: Story): CharacterCa
       creator_notes: metaString(meta, 'creator_notes') ?? story.bible,
       system_prompt: metaString(meta, 'system_prompt') ?? story.genre,
       post_history_instructions: metaString(meta, 'post_history_instructions') ?? story.instruct,
-      alternate_greetings: strList(meta['alternate_greetings']),
+      // The greeting slots' single reader, so a blank row the editor is holding
+      // cannot leak onto an exported card as an empty alternate.
+      alternate_greetings: alternateGreetingsOf(character),
       tags: strList(meta['tags']),
       extensions: {
         ...extensionsOf(meta),

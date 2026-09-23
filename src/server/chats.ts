@@ -28,7 +28,7 @@
  * it is also how that decision would be reversed.
  */
 
-import { greetingOf } from './cards.ts';
+import { greetingsOf } from '../shared/greetings.ts';
 import { transaction } from './db.ts';
 import { expandMacros, macroContextOf } from './macros.ts';
 import { cast, characters, lore, messages, personas, resolvePersona, scenes, stories } from './store/index.ts';
@@ -48,8 +48,18 @@ export type StartChatOutcome =
  * deleted is still chattable — it just needs a world, and `fromStoryId` supplies
  * one when that story casts the card. That is the whole recovery path for a
  * library card: the writer picks which story's world the conversation starts in.
+ *
+ * `greeting` chooses which of the card's openings seeds the transcript, as an
+ * index into `greetingsOf(character)`. It is optional because most callers are a
+ * card click with no picker in sight, and index 0 — the card's opening line — is
+ * the answer there. An index that no longer resolves falls back to that line
+ * rather than failing: the chat is seeded once, and the card may have been
+ * edited between the picker opening and the button being pressed.
  */
-export function startChat(characterId: string, options: { fromStoryId?: string } = {}): StartChatOutcome {
+export function startChat(
+  characterId: string,
+  options: { fromStoryId?: string; greeting?: number } = {},
+): StartChatOutcome {
   const character = characters.get(characterId);
   if (!character) return { kind: 'unknown-character' };
 
@@ -67,7 +77,10 @@ export function startChat(characterId: string, options: { fromStoryId?: string }
      so "check then insert" cannot interleave with another request; the unique
      index is the belt to this braces. */
   const ownsPersona = character.homeStoryId === null;
-  return { kind: 'created', story: transaction(() => openChat(character, source, { ownsPersona })) };
+  return {
+    kind: 'created',
+    story: transaction(() => openChat(character, source, { ownsPersona, greeting: options.greeting })),
+  };
 }
 
 /** The story a chat draws its world and persona pool from, or `null` if there is none. */
@@ -81,7 +94,11 @@ function sourceStoryFor(character: Character, fromStoryId?: string): Story | nul
 }
 
 /** The write sequence itself. Always reached through `startChat`. */
-function openChat(character: Character, source: Story, options: { ownsPersona: boolean }): Story {
+function openChat(
+  character: Character,
+  source: Story,
+  options: { ownsPersona: boolean; greeting?: number },
+): Story {
   const chat = stories.create({
     title: character.name.trim() || 'Chat',
     characterId: character.id,
@@ -137,7 +154,12 @@ function openChat(character: Character, source: Story, options: { ownsPersona: b
     });
   }
 
-  const greeting = greetingOf(character);
+  /* The card's greeting list, blank slots dropped: the picker and this reader
+     must enumerate the same list, or an index means two different lines. The
+     chosen slot falls back to the opening, and a card with no greeting at all
+     seeds nothing — a chat is allowed to open on an empty page. */
+  const greetings = greetingsOf(character);
+  const greeting = greetings[options.greeting ?? 0] ?? greetings[0] ?? '';
   if (greeting) {
     /* The greeting is the one piece of authored text that becomes *transcript*,
        so its macros are resolved here, once, before it is written. Everywhere

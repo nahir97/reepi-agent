@@ -8,8 +8,9 @@
  * portrait deserves a real page rather than a column in a sidebar.
  */
 
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { formatTokens } from '../../shared/cost.ts';
+import { greetingSlotsOf, withAlternates, withOpening } from '../../shared/greetings.ts';
 import type { Character, Persona } from '../../shared/types.ts';
 import { estimateTokens } from '../../shared/tokens.ts';
 import { api, fileToBase64 } from '../api.ts';
@@ -18,7 +19,8 @@ import type { CardKind } from '../store.ts';
 import { Avatar } from './Avatar.tsx';
 import { Insights } from './Insights.tsx';
 import { Shell } from './modals.tsx';
-import { IconAlert, IconCheck, IconTrash, IconUpload } from './icons.tsx';
+import { IconAlert, IconCheck, IconPlus, IconTrash, IconUpload } from './icons.tsx';
+import { SectionTitle } from './panel.tsx';
 
 /* ------------------------------------------------------------------ ledger */
 
@@ -125,12 +127,15 @@ function Field({
   value,
   rows,
   onCommit,
+  action,
 }: {
   label: string;
   hint?: string;
   value: string;
   rows: number;
   onCommit: (next: string) => void;
+  /** A control on the label row — a remove button, for a repeatable field. */
+  action?: ReactNode;
 }) {
   const [draft, setDraft] = useState(value);
   const dirty = draft !== value;
@@ -139,7 +144,10 @@ function Field({
 
   return (
     <label className="block">
-      <span className="label">{label}</span>
+      <span className="label flex items-center gap-2">
+        <span className="min-w-0 truncate">{label}</span>
+        {action ? <span className="ml-auto shrink-0">{action}</span> : null}
+      </span>
       <textarea
         className="field resize-y"
         rows={rows}
@@ -164,6 +172,102 @@ function Field({
         ) : null}
       </span>
     </label>
+  );
+}
+
+/* --------------------------------------------------------------- greetings */
+
+/**
+ * The card's opening lines — the one part of a card that is not in the cast block.
+ *
+ * A greeting is written into a *new* chat as the character's first turn, once, and
+ * never rendered into a payload from the card itself. So editing it re-prices
+ * nothing that already exists, and a chat that has already started keeps the line
+ * it opened on. Both facts surprise in the same direction, so both are stated
+ * beside the fields rather than discovered by a writer who expected a live edit.
+ *
+ * One key per save (`withOpening` / `withAlternates`) because the store merges a
+ * `meta` patch: a greeting edit and a tag edit issued moments apart compose rather
+ * than one overwriting the other. Adding and removing are serialised through
+ * `busy`, since both rewrite the same list.
+ */
+function GreetingEditor({
+  character,
+  save,
+}: {
+  character: Character;
+  save: (patch: Partial<Character>) => Promise<void>;
+}) {
+  const slots = greetingSlotsOf(character);
+  const [busy, setBusy] = useState(false);
+
+  const write = async (patch: Partial<Character>): Promise<void> => {
+    setBusy(true);
+    try {
+      await save(patch);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <SectionTitle title="Opening" />
+      <div className="space-y-3.5">
+        <Field
+          label="Opening message"
+          value={slots.opening}
+          rows={5}
+          hint="Their first turn in a new chat, so you continue from it. It never enters the cast block: editing it re-prices nothing that already exists, and a chat that has already started keeps the line it opened on."
+          onCommit={(opening) => void write({ meta: withOpening(opening) })}
+        />
+
+        {slots.alternates.map((text, index) => (
+          <Field
+            key={index}
+            label={`Alternate ${index + 1}`}
+            value={text}
+            rows={4}
+            hint="Offered next to the opening when a chat starts."
+            action={
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ padding: '0.1rem 0.35rem' }}
+                disabled={busy}
+                aria-label={`Remove alternate greeting ${index + 1}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() =>
+                  void write({ meta: withAlternates(slots.alternates.filter((_, at) => at !== index)) })
+                }
+              >
+                <IconTrash size={11} />
+              </button>
+            }
+            onCommit={(next) =>
+              void write({
+                meta: withAlternates(slots.alternates.map((line, at) => (at === index ? next : line))),
+              })
+            }
+          />
+        ))}
+
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => void write({ meta: withAlternates([...slots.alternates, '']) })}
+        >
+          <IconPlus size={12} />
+          Add an alternate greeting
+        </button>
+        <p className="text-[10.5px] leading-snug text-faint">
+          An alternate is a second way the scene can open. It is offered when a chat starts, and the one you pick is
+          written into that chat as its opening turn. A card with no greeting at all opens on an empty page.
+        </p>
+      </div>
+    </>
   );
 }
 
@@ -297,6 +401,12 @@ function CharacterEditor({ character }: { character: Character }) {
           hint="One exchange per line group. The strongest signal for voice there is."
           onCommit={(exampleDialogue) => void save({ exampleDialogue })}
         />
+
+        {/* The card's fields above are the cast block; this is the transcript's
+            first turn. A border marks the change of subject. */}
+        <div className="border-t border-border pt-3.5">
+          <GreetingEditor character={character} save={save} />
+        </div>
       </div>
 
       <div className="mt-4 flex items-center gap-2 border-t border-border pt-3">

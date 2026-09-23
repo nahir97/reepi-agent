@@ -8,12 +8,16 @@
  * for a character had to apply it blind, one screen away from the conversation it
  * was for.
  *
- * Two decisions shape what this dialog *is*:
+ * Three decisions shape what this dialog *is*:
  *
  * - **It refuses to run when a chat already exists.** A card has at most one
  *   conversation (`stories.character_id` is unique), so `startChatWith` would open
  *   the existing one — and a "new chat" picker over an existing chat is a lie about
  *   what the button does. The dialog closes and opens the conversation instead.
+ * - **The greeting is chosen before the chat exists.** A card may carry several
+ *   openings — its `first_mes` plus any alternate greetings — and the chosen index
+ *   is handed to `startChatWith`, which seeds exactly one into the new transcript.
+ *   A card with none opens on an empty page rather than on a line the app invented.
  * - **The prompt is applied after the chat exists, through the ordinary PATCH.**
  *   There is no composite server endpoint and nothing to make atomic: the chat is
  *   created by `startChatWith`, then the chosen template is copied by
@@ -28,12 +32,14 @@
  */
 
 import { useState } from 'react';
+import { greetingsOf } from '../../../shared/greetings.ts';
+import { clip } from '../../../shared/text.ts';
 import { BLOCK_LABELS, filledBlocks } from '../../../shared/types.ts';
 import { useStore } from '../../store.ts';
 import { Avatar } from '../Avatar.tsx';
 import { Shell } from './shell.tsx';
 
-export function NewChatDialog({ characterId }: { characterId: string }) {
+export function NewChatDialog({ characterId, fromStoryId }: { characterId: string; fromStoryId?: string }) {
   const bundle = useStore((state) => state.bundle);
   const stories = useStore((state) => state.stories);
   const castLibrary = useStore((state) => state.castLibrary);
@@ -45,6 +51,7 @@ export function NewChatDialog({ characterId }: { characterId: string }) {
   const setPage = useStore((state) => state.setPage);
 
   const [templateId, setTemplateId] = useState<string>('');
+  const [greetingIndex, setGreetingIndex] = useState(0);
   const [busy, setBusy] = useState(false);
 
   /* The card can come from the library the launcher read, or from the open
@@ -91,7 +98,7 @@ export function NewChatDialog({ characterId }: { characterId: string }) {
 
   const begin = async (): Promise<void> => {
     setBusy(true);
-    await startChatWith(characterId);
+    await startChatWith(characterId, fromStoryId, greetingIndex);
     /* The chat owns the screen either way: it is what the writer asked for, and a
        failure to write the prompt must not strand them in a dialog. */
     close();
@@ -104,11 +111,14 @@ export function NewChatDialog({ characterId }: { characterId: string }) {
   };
 
   const blocks = chosen ? filledBlocks(chosen) : [];
+  /* The list the index means: blanks dropped, opening first. The server reads the
+     same list, so a choice made here names the line that is actually written. */
+  const greetings = greetingsOf(card);
 
   return (
     <Shell
       title={`New chat with ${card.name}`}
-      subtitle="Starts the conversation on the card's own greeting. The prompt is copied into this chat, never pointed at."
+      subtitle="Starts the conversation on the greeting you choose. The prompt is copied into this chat, never pointed at."
       onClose={close}
       footer={
         <>
@@ -129,10 +139,35 @@ export function NewChatDialog({ characterId }: { characterId: string }) {
         </div>
       </div>
 
+      {greetings.length > 0 ? (
+        <fieldset className="mt-4">
+          <legend className="label">Opening</legend>
+          <div className="space-y-1">
+            {greetings.map((text, index) => (
+              <PromptOption
+                key={index}
+                group="new-chat-greeting"
+                name={index === 0 ? 'Opening line' : `Alternate ${index}`}
+                blurb={clip(text, 160)}
+                blocks={[]}
+                chosen={greetingIndex === index}
+                onPick={() => setGreetingIndex(index)}
+              />
+            ))}
+          </div>
+        </fieldset>
+      ) : (
+        <p className="mt-4 text-[11px] leading-snug text-faint">
+          This card has no opening line, so the chat will start on an empty page. Write the first turn yourself, or add a
+          greeting in the card editor first.
+        </p>
+      )}
+
       <fieldset className="mt-4">
         <legend className="label">Prompt</legend>
         <div className="space-y-1">
           <PromptOption
+            group="new-chat-prompt"
             name="No prompt"
             blurb="Keep the world's own blocks, exactly as the chat is seeded with them."
             blocks={[]}
@@ -142,6 +177,7 @@ export function NewChatDialog({ characterId }: { characterId: string }) {
           {templates.map((template) => (
             <PromptOption
               key={template.id}
+              group="new-chat-prompt"
               name={template.name}
               blurb={template.blurb || 'no blurb'}
               blocks={filledBlocks(template).map((block) => BLOCK_LABELS[block])}
@@ -163,6 +199,7 @@ export function NewChatDialog({ characterId }: { characterId: string }) {
 }
 
 function PromptOption({
+  group,
   name,
   blurb,
   blocks,
@@ -170,6 +207,8 @@ function PromptOption({
   chosen,
   onPick,
 }: {
+  /** Radio group name: two fieldsets on one shell must not share a group. */
+  group: string;
   name: string;
   blurb: string;
   blocks: string[];
@@ -185,7 +224,7 @@ function PromptOption({
         background: chosen ? 'var(--accent-soft)' : 'transparent',
       }}
     >
-      <input type="radio" name="new-chat-prompt" className="sr-only" checked={chosen} onChange={onPick} />
+      <input type="radio" name={group} className="sr-only" checked={chosen} onChange={onPick} />
       <span
         aria-hidden="true"
         className="mt-1 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border"

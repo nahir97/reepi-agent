@@ -244,8 +244,12 @@ click away and none of it is on the default screen.
 - **Click a character and you are talking to them.** A card's face opens a 1:1 chat — created
   on first use, reopened after that — and that chat is a real conversation: one borrowed card,
   its own transcript, its own cache prefix and cost. It inherits the story's world (contract,
-  genre, style, bible, scenario and anchored lore) and none of its turns, and it opens on the
-  card's greeting. Who you are is a chip beside the composer, switchable mid-chat; switching
+  genre, style, bible, scenario and anchored lore) and none of its turns, and it opens on a
+  greeting you choose when you start it. A card carries an opening line and any number of
+  alternates — authored in the card editor, or imported from a SillyTavern card — and the one you
+  pick is written into the new transcript as the character's first turn, so you continue from it.
+  A greeting never enters the cast block, so editing one cannot re-price a prefix that already
+  exists. Who you are is a chip beside the composer, switchable mid-chat; switching
   re-prices the payload from the persona block on, which is the one cache cost the interface
   states before you take it. The pencil in the card's footer is still the editor.
 - **A creation assistant with its own chat.** **Creation assistant** is a destination in the rail,

@@ -137,6 +137,58 @@ check('duplicating a chat yields a standalone story', Boolean(
 ));
 check('a copy is cast in the story it was copied into', branched ? cast.listForStory(branched.story.id).length === 1 : false);
 
+/* --- greetings: the opening line plus alternates, and choosing one ----------
+ *
+ * A greeting is card data (`meta.first_mes`, `meta.alternate_greetings`), so it is
+ * the one authored line that becomes the transcript rather than the cast block.
+ * These pin the two halves that can drift: which slot an index names, and that a
+ * `meta` patch merges into the card rather than replacing it.
+ */
+const greetingStory = stories.create({ title: 'Greetings' });
+const voiced = characters.create(greetingStory.id, {
+  name: 'Vess',
+  meta: {
+    first_mes: 'You came back.',
+    alternate_greetings: ['The door is already open.', 'You are late.'],
+    tags: ['noir'],
+  },
+});
+
+const chosen = startChat(voiced.id, { greeting: 1 });
+check('startChat seeds the chosen alternate greeting', Boolean(
+  chosen.kind === 'created' &&
+  messages.list(chosen.story.id).length === 1 &&
+  messages.list(chosen.story.id)[0]?.variants[0] === 'The door is already open.',
+));
+
+check('a greeting edit merges into the card meta', (() => {
+  const back = characters.update(voiced.id, { meta: { first_mes: 'You came back again.' } });
+  return back?.meta['first_mes'] === 'You came back again.' &&
+    (back.meta['tags'] as string[])?.[0] === 'noir' &&
+    Array.isArray(back.meta['alternate_greetings']);
+})());
+
+/* An index that no longer resolves falls back to the opening line rather than
+   failing: the card can be edited between the picker opening and the click. */
+const fallbackCard = characters.create(greetingStory.id, { name: 'Orrin', meta: { first_mes: 'Well then.' } });
+const fallback = startChat(fallbackCard.id, { greeting: 9 });
+check('an unresolvable greeting index falls back to the opening line', Boolean(
+  fallback.kind === 'created' && messages.list(fallback.story.id)[0]?.variants[0] === 'Well then.',
+));
+
+/* The editor holds empty rows; the picker must not. A blank opening and a blank
+   alternate are both dropped, so index 0 is the first line that is really there. */
+const blankCard = characters.create(greetingStory.id, {
+  name: 'Nix',
+  meta: { first_mes: '   ', alternate_greetings: ['Only this one.', ''] },
+});
+const only = startChat(blankCard.id, { greeting: 0 });
+check('blank greeting slots are not offered', Boolean(
+  only.kind === 'created' &&
+  messages.list(only.story.id).length === 1 &&
+  messages.list(only.story.id)[0]?.variants[0] === 'Only this one.',
+));
+
 /* --- the cast is a library: one card, many casts ---------------------------
    The card keeps one definition and one home; a second story adopts it. An edit
    made anywhere is visible everywhere, which is the whole reason this is a

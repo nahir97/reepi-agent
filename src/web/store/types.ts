@@ -158,7 +158,7 @@ export type Dialog =
   | { kind: 'story-settings' }
   | { kind: 'import-export' }
   | { kind: 'new-story' }
-  | { kind: 'new-chat'; characterId: string }
+  | { kind: 'new-chat'; characterId: string; fromStoryId?: string }
   | { kind: 'payload' }
   | { kind: 'prompt-templates'; templateId?: string }
   | { kind: 'insights' }
@@ -320,8 +320,21 @@ export type Store = {
    *
    * `fromStoryId` names the world to seed from when the card's home story is
    * gone — it must be a story that casts the card. Only that case needs it.
+   * `greeting` picks which of the card's opening lines seeds the transcript, as
+   * an index into `greetingsOf`; omitted means its first line.
    */
-  startChatWith: (characterId: string, fromStoryId?: string) => Promise<void>;
+  startChatWith: (characterId: string, fromStoryId?: string, greeting?: number) => Promise<void>;
+
+  /**
+   * The card's own start gesture: open its chat, or work out how to start it.
+   *
+   * A card with a single opening line starts in one click, exactly as before. A
+   * card with alternates asks which one first (`new-chat` dialog), because the
+   * choice is only free at the moment the transcript is seeded and a card has one
+   * chat. Callers pass the card's id and, for a home-less card, the story lending
+   * its world; this action finds the card itself.
+   */
+  openChatWith: (characterId: string, fromStoryId?: string) => Promise<void>;
 
   /** Read the whole character library. */
   loadCastLibrary: () => Promise<void>;

@@ -289,7 +289,14 @@ mod.delete('/stories/:id/cast/:characterId', (c) => {
 mod.post('/characters/:id/chat', async (c) => {
   const body = await readBody<StartChatBody>(c);
   const fromStoryId = asString(body?.fromStoryId).trim() || undefined;
-  const outcome = startChat(param(c, 'id'), { fromStoryId });
+  /* The index is validated rather than coerced: a greeting the writer picked is
+     a choice, and rounding `1.7` down to a different opening would be a quiet
+     second opinion about it. */
+  const greeting = body?.greeting;
+  if (greeting !== undefined && (typeof greeting !== 'number' || !Number.isInteger(greeting) || greeting < 0)) {
+    return fail(c, 400, 'Invalid greeting', 'greeting must be a whole number, counting from 0.');
+  }
+  const outcome = startChat(param(c, 'id'), { fromStoryId, greeting });
   if (outcome.kind === 'unknown-character') return notFound(c, 'Character');
   if (outcome.kind === 'orphan') {
     return fail(

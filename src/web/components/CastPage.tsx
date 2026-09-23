@@ -164,7 +164,7 @@ export function CastPage() {
   const castLibraryError = useStore((state) => state.castLibraryError);
   const setPage = useStore((state) => state.setPage);
   const createCard = useStore((state) => state.createCard);
-  const startChatWith = useStore((state) => state.startChatWith);
+  const openChatWith = useStore((state) => state.openChatWith);
   const addToCast = useStore((state) => state.addToCast);
   const removeFromCast = useStore((state) => state.removeFromCast);
   const loadCastLibrary = useStore((state) => state.loadCastLibrary);
@@ -518,7 +518,7 @@ export function CastPage() {
                            the conversation that card would open. */
                         onOpen={
                           entry.kind === 'character' && !isChat
-                            ? () => void startChatWith(entry.id, chatSourceFor(entry, storyId))
+                            ? () => void openChatWith(entry.id, chatSourceFor(entry, storyId))
                             : null
                         }
                         openLabel={entry.chat ? 'Open chat' : 'Chat'}
