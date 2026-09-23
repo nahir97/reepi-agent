@@ -12,31 +12,41 @@ import { useStore } from '../store.ts';
 import { Avatar } from './Avatar.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
 import { Prose } from './Prose.tsx';
-import { IconArrowDown, IconPlus, IconSpark, IconStop } from './icons.tsx';
+import { IconArrowDown, IconClose, IconPlus, IconSearch, IconSpark, IconStop } from './icons.tsx';
 
 const STICK_THRESHOLD = 140;
 
-type SceneOption = { id: string; title: string; archived: boolean };
+/**
+ * The text a message search reads.
+ *
+ * Every candidate, not just the visible one: a writer searching for a line they
+ * know they wrote should find it even if they have since regenerated that turn.
+ * The reasoning traces are deliberately excluded — they are the model's working,
+ * not the story.
+ */
+function searchableText(message: { variants: string[]; speaker: string | null }): string {
+  return `${message.speaker ?? ''} ${message.variants.join(' ')}`.toLowerCase();
+}
 
 export function Transcript() {
   const bundle = useStore((state) => state.bundle);
   const streaming = useStore((state) => state.streaming);
   const abort = useStore((state) => state.abort);
   const activeScene = useStore((state) => state.activeScene);
-  const switchScene = useStore((state) => state.switchScene);
-  const createScene = useStore((state) => state.createScene);
-  const openDialog = useStore((state) => state.openDialog);
+  const filter = useStore((state) => state.messageFilter);
+  const setMessageFilter = useStore((state) => state.setMessageFilter);
+  const searchOpen = useStore((state) => state.messageSearchOpen);
+  const setSearchOpen = useStore((state) => state.setMessageSearchOpen);
 
   const scroller = useRef<HTMLDivElement | null>(null);
+  const searchField = useRef<HTMLInputElement | null>(null);
   const [stuck, setStuck] = useState(true);
   const [arrivedSince, setArrivedSince] = useState(0);
   const [sceneId, setSceneId] = useState<string | null>(null);
 
   const scene = activeScene();
-  const scenes = useMemo<SceneOption[]>(
-    () => (bundle?.scenes ?? []).map((item) => ({ id: item.id, title: item.title, archived: item.archived })),
-    [bundle],
-  );
+
+  const needle = filter.trim().toLowerCase();
 
   const messages = useMemo(() => {
     const all = bundle?.messages ?? [];
@@ -46,6 +56,26 @@ export function Transcript() {
     // them beats hiding someone's writing.
     return mine.length > 0 ? mine : all;
   }, [bundle, scene]);
+
+  /* The panel's `Search messages` row opens this, and it filters the transcript in
+     place rather than opening a second list: the turn you were looking for is a
+     turn, and reading it in the conversation is the point. */
+  const shown = useMemo(
+    () => (needle === '' ? messages : messages.filter((message) => searchableText(message).includes(needle))),
+    [messages, needle],
+  );
+
+  const closeSearch = (): void => {
+    setSearchOpen(false);
+    setMessageFilter('');
+  };
+
+  /* The field is focused when it appears, because the row that opened it was a
+     deliberate act — and not on every render, or the scroll-stick effect would
+     steal focus mid-word. */
+  useEffect(() => {
+    if (searchOpen) searchField.current?.focus();
+  }, [searchOpen]);
 
   useEffect(() => {
     if (scene && scene.id !== sceneId) setSceneId(scene.id);
@@ -90,7 +120,7 @@ export function Transcript() {
     } else if (streaming.active) {
       setArrivedSince((count) => count + 1);
     }
-  }, [streaming.text, streaming.active, messages.length, stuck]);
+  }, [streaming.text, streaming.active, shown.length, stuck]);
 
   /* A fresh story or scene jump lands at the bottom. */
   useEffect(() => {
@@ -104,7 +134,8 @@ export function Transcript() {
   if (!bundle) return null;
 
   const streamedId = streaming.active ? streaming.messageId : null;
-  const showEmpty = messages.length === 0 && !streaming.active;
+  const showEmpty = shown.length === 0 && !streaming.active && needle === '';
+  const noMatches = needle !== '' && shown.length === 0;
 
   return (
     <section className="relative flex min-h-0 flex-1 flex-col" aria-label="Transcript">
@@ -116,6 +147,43 @@ export function Transcript() {
           <button type="button" className="btn btn-danger" onClick={abort}>
             <IconStop size={11} />
             Stop
+          </button>
+        </div>
+      ) : null}
+
+      {/* The message filter. The row that opens it lives in the story panel; the
+          field lives here, because a search of the transcript belongs on the
+          transcript. It filters rather than navigating, so the turn you were
+          looking for is read in its conversation. */}
+      {searchOpen ? (
+        <div className="mb-1 flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-1.5" style={{ background: 'var(--accent-soft)' }}>
+          <span className="eyebrow eyebrow-accent shrink-0">Search</span>
+          <input
+            ref={searchField}
+            className="field field-sm min-w-0 flex-1"
+            type="search"
+            value={filter}
+            placeholder="Find a turn — a name, a phrase, a line of dialogue"
+            aria-label="Search this conversation's turns"
+            onChange={(event) => setMessageFilter(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') closeSearch();
+            }}
+          />
+          <span className="num shrink-0 text-[11px] text-faint">
+            {needle === ''
+              ? `${messages.length} turn${messages.length === 1 ? '' : 's'}`
+              : `${shown.length} of ${messages.length}`}
+          </span>
+          <button
+            type="button"
+            className="icon-btn shrink-0"
+            style={{ width: 24, height: 24 }}
+            onClick={closeSearch}
+            aria-label="Close the message search"
+            title="Show every turn again"
+          >
+            <IconClose size={12} />
           </button>
         </div>
       ) : null}
@@ -132,8 +200,22 @@ export function Transcript() {
         <div className="mx-auto w-full max-w-[52rem] px-3 py-5 sm:px-6 sm:py-8">
           {showEmpty ? <EmptyTranscript /> : null}
 
+          {noMatches ? (
+            <div className="animate-rise mx-auto max-w-[46rem] py-6 text-center">
+              <div className="eyebrow">Nothing matches</div>
+              <p className="mt-1.5 text-[13px] leading-snug text-faint">
+                No turn in this conversation carries “{filter.trim()}”. The search reads every candidate
+                generation and the speaker's name.
+              </p>
+              <button type="button" className="btn mt-3" onClick={closeSearch}>
+                <IconSearch size={12} />
+                Clear the search
+              </button>
+            </div>
+          ) : null}
+
           <div className="space-y-5 sm:space-y-6">
-            {messages.map((message) => (
+            {shown.map((message) => (
               <MessageBubble
                 key={message.id}
                 message={message}

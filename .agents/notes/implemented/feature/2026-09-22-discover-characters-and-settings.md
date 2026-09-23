@@ -96,6 +96,65 @@ One rule keeps the page honest: **a row whose subject does not exist is omitted,
 No story open means no `This story` section at all, not five greyed controls. "No story is open" is
 said once, in the band.
 
+### The story panel is the chat's control panel, not an index of sections
+
+The section menu's first shape was one row per payload section, each with a live
+summary. That was a real improvement on the seven-tab strip it replaced, and it was
+still an *index*: eight pointers next to a lot of empty panel. Two things exposed it.
+
+**The phone's panel icon opened the Cast section, not the menu.** `AppHeader`
+hard-coded `setRightTab('cast')` before opening the drawer, so the first thing a
+writer saw after tapping the panel was a one-card roster — or an empty one — and a
+back chevron they had no reason to press. The icon now opens the drawer at its
+front page, and a section is one tap further in. (The screenshot that reported this
+was of a phone *served by `:8787`*, whose `dist/` predated the navigation change;
+on the dev server the sheet had the four destinations. Both were verified.)
+
+**The front page was thin even once reached.** So the menu is now the panel:
+
+1. **Identity** — a chat leads with its borrowed card (portrait, tagline, token
+   weight, `Edit card`, `Prompt`); a plain story leads with its own shape (scene,
+   model, effort, cast/lore/memory counts, `Story settings`, `Prompts`).
+2. **Context** — Cast, Persona, Lorebook, Memory, Scene, Director, each carrying up
+   to three of its *actual* items: the lore entries with whether they are firing or
+   armed on keys, the memories with their subject, the scene's state fields with
+   their values, the cast with their token weights, the pending Director notes. When
+   a section is empty it says what to do about it rather than printing a zero.
+3. **Payload** — the block analysis and the prompt, unchanged.
+4. **This conversation** — `Search messages`, `Rename`, `Re-measure`, `Warm the
+   cache`, `Duplicate`, `Delete`, `Import & export`. Every row calls an action the
+   app already had; a panel that only reads is a panel you have to leave to act.
+
+The previews are the substance the reference comparison asked for — world lore
+lives in the panel, visibly, without a click — and they cost one `useSectionItems`
+hook rather than seven bespoke widgets, because each one reads the same bundle the
+section it previews reads.
+
+**Rename uses `window.prompt` for now**, and that is a known compromise rather than
+a decision: the app's own rule is that confirmations happen in place, and a native
+prompt is the one dialog here that does not follow it. It is recorded under
+Consequences.
+
+### `Search messages` filters the transcript in place
+
+The one reference row with no counterpart in this app. Built client-side — no route,
+no index, no migration — because a conversation is already loaded in memory and
+`Message.variants` is what a writer means by "a message":
+
+- The panel's row flips `messageSearchOpen` (`chrome` state, like `rightTab`, because
+  the control is in one column and the field in another).
+- `Transcript` renders the field above the scroller, focuses it once on open, and
+  filters turns on `speaker + every variant` — every candidate generation, so a line
+  someone regenerated is still findable. Reasoning traces are excluded: that is the
+  model's working, not the story.
+- The field reports `N of M`, the empty state says so explicitly rather than showing
+  a blank page, and `openStory` clears both the filter and the field, so a search for
+  someone else's words can never outlive the story it was typed in.
+
+The `ChatProfile`/`InspectMenu` split this replaces is gone: `InspectMenu` now owns
+identity, the two section groups and the verbs, and `FirstRun`'s stale
+"open an existing story" button reads from the story list it still has.
+
 ### The Prompt section is the answer to "which prompt is this chat using?"
 
 A new `RightTab`, `templates`, filed in the rail's menu immediately after `Payload` — the one entry
@@ -197,6 +256,17 @@ whose current position a writer has to notice.
 - **The phone's sheet lost its theme swatches** and its duplicated studio rows. Theme is a row of
   swatches in Settings; the four destinations are rows at the top of the sheet. The rail keeps its
   own `Studio settings` door rather than its own swatch row, so there is one place a theme is chosen.
+- **`Rename this conversation` and `Search messages` open native `window.prompt`s**, which is the one
+  place the interface leaves its own confirmation convention. Both are genuinely one-value prompts
+  (`updateStory({title})`, a needle), both are reached deliberately from the panel, and building two
+  inline editors for them would have been more surface for less. A future pass that gives the panel an
+  inline rename field deletes two lines here and nothing else.
+- **The panel's previews read the whole bundle**, so they show the first three rows of each section
+  rather than "the three that matter". Ranking them would be inventing a second opinion about the
+  writer's material; the cap is a preview, and the section is the list.
+- **Message search is a filter, not a jump-to-result list.** With ten turns it is obviously right;
+  with a thousand it would want a match list with positions. `Message.seq` and the scene filter are
+  already there to build one, and the field is the seam it would attach to.
 
 ## Testing
 
@@ -228,3 +298,12 @@ whose current position a writer has to notice.
   431. `/api/characters` shows the same row, and no file in this change touches avatar handling.
 - Screenshot pass over Discover, Characters, Settings, the rail's Prompt section and the in-place
   apply confirm at 1280; the phone widths were measured rather than photographed.
+- **The panel's previews, read off the running app at 420px with the drawer open** on the story that
+  has real content: `Cast 4 characters` listing them with token weights, `Persona 2 personas` with
+  `active — read as you`, `Lorebook 0 entries` (the data really is empty), `Memory 6 facts · 3
+  recalled now` with the recalled sentences, `Scene 5 state fields · 2 open threads` with *Time
+  midnight / Location dark stone corridor*, and `Director 2 notes waiting` with the critique text —
+  so a section with content shows it and a section without says so.
+- **Message search end to end** on a story with ten turns: the field appears focused, `plaster`
+  narrows `turns before=10 after=3 counter=3 of 10`, a no-match needle renders the explicit empty
+  state with zero cards, clearing restores 10, and Escape closes the field. Zero page errors.

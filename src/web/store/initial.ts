@@ -134,6 +134,8 @@ export function initialState(): Omit<
   | 'setRailOpen'
   | 'setAppliedTemplate'
   | 'setPage'
+  | 'setMessageFilter'
+  | 'setMessageSearchOpen'
   | 'setDrawer'
   | 'openDialog'
   | 'setPalette'
@@ -196,6 +198,8 @@ export function initialState(): Omit<
        to open. Which page you were on is not worth remembering across a reload;
        which *conversation* you were in is, and that lives in `LAST_STORY_KEY`. */
     page: 'story',
+    messageFilter: '',
+    messageSearchOpen: false,
     ui: { rightTab: null, drawer: null, dialog: null, palette: false, toasts: [], appliedTemplate: null },
   };
 }

@@ -231,10 +231,17 @@ click away and none of it is on the default screen.
   templates, story settings, transfer, duplicate, theme — is filed by subject on one page, each row
   opening the dialog that already existed. The rail keeps `New story`, `Discover`, the conversation
   list, the scenes of the open story, and a door into Settings.
-- **The story panel is the chat's own.** Inside a chat, the rail's front page leads with the card the
-  conversation is about, then the payload sections — including **Prompt**, which lists every saved
+- **The story panel is the chat's own.** The rail's front page is the panel itself, not an index of
+  it: the card a chat is about (or the story's own shape), then the material the request is built from
+  — **Cast, Persona, Lorebook, Memory, Scene, Director**, each showing the first few of its *actual*
+  rows, and saying what to do when it has none — then **Payload** and **Prompt**, then the verbs:
+  search messages, rename, re-measure, warm, duplicate, delete, transfer. **Prompt** lists every saved
   template with the blocks it would write, shows how much of the one last applied still matches the
   story, and applies another in a single action with the repriced blocks named first.
+- **Search messages filters the transcript in place.** The panel row opens a field above the
+  transcript and narrows the turns — speaker names and every candidate generation — reporting how many
+  of how many, and clearing itself when you open another conversation. Client-side: no index, no route,
+  and nothing cached is disturbed.
 - **Click a character and you are talking to them.** A card's face opens a 1:1 chat — created
   on first use, reopened after that — and that chat is a real conversation: one borrowed card,
   its own transcript, its own cache prefix and cost. It inherits the story's world (contract,
@@ -501,6 +508,8 @@ that were over 1100 lines each held unrelated jobs and were split.
 
 ## Notes and honest limits
 
+- **The panel's previews are the first few rows of a section**, capped at three, not a ranking. The
+  section is the list; the panel is a look inside it without a click.
 - **Token counts in previews are estimated**, not tokenised — Reepi does not ship
   DeepSeek's BPE vocabulary. The estimator is self-calibrating: every response's
   true `prompt_tokens` is folded back in as an EWMA correction, so previews

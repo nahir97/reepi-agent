@@ -22,7 +22,8 @@ import type { StoryTemplateId } from '../../../shared/api.ts';
 export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setTheme' | 'setStoryTheme' | 'loadStories' | 'loadStoryStats' | 'openStory' | 'refreshBundle' |
   'createStory' | 'duplicateStory' | 'archiveStory' | 'updateStory' | 'createScene' | 'switchScene' |
   'updateScene' | 'archiveScene' | 'createCard' | 'startChatWith' | 'loadCastLibrary' | 'refreshCastLibrary' |
-  'addToCast' | 'removeFromCast' | 'setRightTab' | 'setRailOpen' | 'setAppliedTemplate' | 'setPage' | 'setDrawer' |
+  'addToCast' | 'removeFromCast' | 'setRightTab' | 'setRailOpen' | 'setAppliedTemplate' | 'setPage' |
+  'setMessageFilter' | 'setMessageSearchOpen' | 'setDrawer' |
   'openDialog' | 'setPalette' | 'toast' | 'dismissToast' | 'fail'> {
   return {
     boot: async () => {
@@ -110,7 +111,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
            is what a cast page is covering, and what a drawer is over. `page` moves
            for the same reason: every host that can open a story is a page the
            transcript should replace. */
-        set({ ui: { ...get().ui, drawer: null }, page: 'story' });
+        set({ ui: { ...get().ui, drawer: null }, page: 'story', messageFilter: '', messageSearchOpen: false });
         rememberStory(storyId);
         return;
       }
@@ -136,8 +137,10 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
         });
         if (bundle.story.theme !== get().theme) get().setTheme(bundle.story.theme);
         /* Opening a story is the one gesture that always means "write here", so it
-           leaves whatever page was covering the transcript. */
-        set({ ui: { ...get().ui, drawer: null }, page: 'story' });
+           leaves whatever page was covering the transcript — and it clears the
+           message filter, because a search for someone else's words must not
+           outlive the story it was typed in. */
+        set({ ui: { ...get().ui, drawer: null }, page: 'story', messageFilter: '', messageSearchOpen: false });
         rememberStory(storyId);
         void get().refreshInsights();
         void get().loadMacros();
@@ -434,6 +437,10 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
      * reason a modal needed a `from` field to fake that, and a page does not.
      */
     setPage: (page) => set({ page }),
+
+    setMessageFilter: (messageFilter) => set({ messageFilter }),
+
+    setMessageSearchOpen: (messageSearchOpen) => set({ messageSearchOpen }),
 
     setDrawer: (drawer) => set({ ui: { ...get().ui, drawer } }),
     openDialog: (dialog) => set({ ui: { ...get().ui, dialog } }),

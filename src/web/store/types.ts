@@ -226,6 +226,24 @@ export type Store = {
   railOpen: boolean;
   /** Which page the centre column shows. `story` is the transcript. */
   page: Page;
+  /**
+   * The transcript's message filter, as the story panel's `Search messages` row set it.
+   *
+   * A needle, not a query language: it is matched case-insensitively against a
+   * turn's visible text. Empty means no filter. Held in the store rather than in
+   * `Transcript` because the control that sets it lives in the other column, and
+   * because opening another story has to clear it — a filter that survived a
+   * story change would hide the new transcript behind a search nobody typed.
+   */
+  messageFilter: string;
+  /**
+   * Whether the transcript is showing its message-search field.
+   *
+   * The `Search messages` row lives in the story panel and the field lives in the
+   * transcript, so "show the field" is chrome state rather than either column's
+   * private business — the same reason `rightTab` is here.
+   */
+  messageSearchOpen: boolean;
   ui: {
     rightTab: RailView;
     drawer: Drawer;
@@ -318,6 +336,10 @@ export type Store = {
   /** Record (or clear) the prompt applied to the open story this session. */
   setAppliedTemplate: (applied: AppliedTemplate | null) => void;
   setPage: (page: Page) => void;
+  /** Set the transcript's message filter. Empty clears it. */
+  setMessageFilter: (filter: string) => void;
+  /** Show or hide the transcript's message-search field. */
+  setMessageSearchOpen: (open: boolean) => void;
   setDrawer: (drawer: Drawer) => void;
   openDialog: (dialog: Dialog) => void;
   setPalette: (open: boolean) => void;

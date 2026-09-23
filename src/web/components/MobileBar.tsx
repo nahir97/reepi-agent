@@ -86,12 +86,19 @@ export function AppHeader() {
           opens it. At `xl` and above the panel is the payload rail, which has its
           own toggle — leaving this visible there produced two identical icons
           stacked in the same corner, the lower one for a drawer that is
-          `xl:hidden` and therefore never appeared. */}
+          `xl:hidden` and therefore never appeared.
+
+          It opens the panel **at its front page**, not at a section. It used to
+          open the Cast section, which on a chat is a one-card roster and on a
+          story may be empty — so the first thing a writer saw after tapping the
+          panel was a nearly empty drawer with a back button they did not know to
+          press. The menu is the panel; a section is one tap further in. */}
       <button
         type="button"
         className="icon-btn xl:hidden"
         onClick={() => {
-          setRightTab('cast');
+          const state = useStore.getState();
+          if (state.ui.drawer !== 'right') state.setRightTab(null);
           setDrawer(drawer === 'right' ? null : 'right');
         }}
         aria-expanded={drawer === 'right'}
