@@ -9,8 +9,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { TEMPLATES, type StoryTemplateId } from '../../shared/api.ts';
 import { formatPercent, formatUsd } from '../../shared/cost.ts';
-import { useStore, type RightTab } from '../store.ts';
-import { SECTIONS, SECTION_LABEL } from './inspector/menu.tsx';
+import { useStore } from '../store.ts';
 import { IconBook, IconPlus, IconScroll, IconSearch, IconWarm } from './icons.tsx';
 
 type Command = {
@@ -21,10 +20,6 @@ type Command = {
   run: () => void;
 };
 
-const SECTION_TABS: { id: RightTab; hint: string }[] = SECTIONS.map((section) => ({
-  id: section.id,
-  hint: section.hint,
-}));
 
 export function CommandPalette({ onClose }: { onClose: () => void }) {
   const stories = useStore((state) => state.stories);
@@ -34,10 +29,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const switchScene = useStore((state) => state.switchScene);
   const createStory = useStore((state) => state.createStory);
   const openDialog = useStore((state) => state.openDialog);
-  const setRightTab = useStore((state) => state.setRightTab);
-  const setRailOpen = useStore((state) => state.setRailOpen);
   const setPage = useStore((state) => state.setPage);
-  const setDrawer = useStore((state) => state.setDrawer);
   const setTheme = useStore((state) => state.setTheme);
   const runWarm = useStore((state) => state.runWarm);
   const runAgentic = useStore((state) => state.runAgentic);
@@ -53,16 +45,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   }, []);
 
   const commands = useMemo<Command[]>(() => {
-    /* Opening a section has to work on both layouts: the rail on a wide screen
-       (which has to be *open* first) and the drawer on a narrow one. Setting only
-       the drawer left this command inert at every width where the rail exists. */
-    const openInspector = (tab: RightTab): void => {
-      setRightTab(tab);
-      setRailOpen(true);
-      setDrawer('right');
-      onClose();
-    };
-
     const list: Command[] = [
       {
         id: 'new-story',
@@ -236,16 +218,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       },
     ];
 
-    for (const tab of SECTION_TABS) {
-      list.push({
-        id: `tab-${tab.id}`,
-        label: `Inspector · ${SECTION_LABEL[tab.id]}`,
-        hint: tab.hint,
-        group: 'Go',
-        run: () => openInspector(tab.id),
-      });
-    }
-
     for (const theme of ['ink', 'ember', 'verdant', 'daylight'] as const) {
       list.push({
         id: `theme-${theme}`,
@@ -314,10 +286,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     runAgentic,
     runDiagnose,
     runWarm,
-    setDrawer,
     setPage,
-    setRailOpen,
-    setRightTab,
     setTheme,
     switchScene,
   ]);

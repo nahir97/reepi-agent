@@ -32,15 +32,15 @@ import type {
   Theme,
 } from '../../shared/types.ts';
 
-export type RightTab =
-  | 'blocks'
-  | 'templates'
-  | 'cast'
-  | 'persona'
-  | 'lore'
-  | 'memory'
-  | 'scene'
-  | 'director';
+/**
+ * A section of the story panel.
+ *
+ * The story's *material* — what a conversation is made of. The payload analysis
+ * used to be a section here too and is not any more: it is one tap away behind the
+ * composer's cache pill, which is the control that measures it. A panel you keep
+ * open while reading is not the place to report on the request.
+ */
+export type RightTab = 'cast' | 'persona' | 'lore' | 'memory' | 'scene' | 'director';
 
 /**
  * What the payload rail is showing: a section, or `null` for the section menu.
@@ -159,6 +159,7 @@ export type Dialog =
   | { kind: 'import-export' }
   | { kind: 'new-story' }
   | { kind: 'new-chat'; characterId: string }
+  | { kind: 'payload' }
   | { kind: 'prompt-templates' }
   | { kind: 'insights' }
   | { kind: 'card'; card: CardKind; id: string }

@@ -231,13 +231,12 @@ click away and none of it is on the default screen.
   templates, story settings, transfer, duplicate, theme — is filed by subject on one page, each row
   opening the dialog that already existed. The rail keeps `New story`, `Discover`, the conversation
   list, the scenes of the open story, and a door into Settings.
-- **The story panel is the chat's own.** The rail's front page is the panel itself, not an index of
-  it: the card a chat is about (or the story's own shape), then the material the request is built from
-  — **Cast, Persona, Lorebook, Memory, Scene, Director**, each showing the first few of its *actual*
-  rows, and saying what to do when it has none — then **Payload** and **Prompt**, then the verbs:
-  search messages, rename, re-measure, warm, duplicate, delete, transfer. **Prompt** lists every saved
-  template with the blocks it would write, shows how much of the one last applied still matches the
-  story, and applies another in a single action with the repriced blocks named first.
+- **The story panel is the story, and nothing else.** The rail's front page is the panel itself, not
+  an index of it: the card a chat is about (or the story's own shape), then the material the request
+  is built from — **Cast, Persona, Lorebook, Memory, Scene, Director**, each showing the first few of
+  its *actual* rows, and saying what to do when it has none — then the conversation's own verbs:
+  search messages, rename, duplicate, delete, transfer. There is deliberately no payload group and no
+  cost row in it: a panel you keep open while reading is not the place to report on the request.
 - **Search messages filters the transcript in place.** The panel row opens a field above the
   transcript and narrows the turns — speaker names and every candidate generation — reporting how many
   of how many, and clearing itself when you open another conversation. Client-side: no index, no route,
@@ -283,15 +282,18 @@ click away and none of it is on the default screen.
 - **Attribution.** Any turn can be reassigned to a character, so an ensemble scene
   reads as a conversation between named speakers rather than a wall of "Narrator".
 - **One cost pill** in the composer — live predicted hit rate, the price of the
-  turn, and what the cache took off it. Tap it for the full payload analysis.
+  turn, and what the cache took off it. Tapping it opens the **payload report** as a
+  dialog: every block in the order the provider sees, its token share, volatility
+  class, whether it moved since the last turn, and its exact rendered text. The
+  control that measures the request is the control that explains it, and the report
+  stays out of the rail while you read.
 - **A foldable turn-details disclosure** per message: hit rate, hit/miss tokens,
   output, cost, saved-vs-cold, time-to-first-token, whether it was billed at peak,
   and which lore entries were injected.
 - **Conversation-aware advice** — the app reads its own ledger and names the frozen
   block you have been editing if your realised hit rate slips.
-- **A payload inspector** behind one button (collapsed by default, and the choice
-  is remembered): every block, its token share, volatility class, whether it
-  changed, and its rendered text.
+- **The payload report is also in Settings**, as `Payload report`, for when the
+  composer is not on screen.
 - **Warm-up** — pays one miss-priced pass deliberately after editing canon, then
   *proves* it worked by re-sending the identical payload and reading the API's own
   hit accounting.
@@ -493,13 +495,14 @@ src/
       MacroPicker.tsx    the macro reference (live values) and the insert-a-token control
       CacheMeter.tsx     the pill, and the full payload meter behind it
       Inspector.tsx      rail chrome: the band, the menu, the open section
-      inspector/         one module per section: blocks, templates (the Prompt row), cast, persona,
-                         lore, memory, scene, director, and the menu that lists them
+      inspector/         one module per section: cast, persona, lore, memory, scene, director, the
+                         menu that lists them, and blocks.tsx — the payload report's body
       panel.tsx          SectionTitle / Card / Metric / PageBand, shared by every panel and page
       editors.tsx        cost ledger + full character/persona editors
       MobileBar.tsx      app header and the navigation sheet
       modals.tsx         barrel over dialogs/
-      dialogs/           one module per dialog: story settings, new chat, prompt templates, transfer…
+      dialogs/           one module per dialog: story settings, new chat, payload report, prompt
+                         templates, transfer…
 ```
 
 Files are split when they have more than one reason to change — not to hit a line

@@ -26,6 +26,7 @@ import {
   ImportExportDialog,
   NewChatDialog,
   NewStoryDialog,
+  PayloadDialog,
   PromptTemplatesDialog,
   StorySettingsDialog,
 } from './components/modals.tsx';
@@ -180,6 +181,7 @@ export function App() {
       {dialog?.kind === 'import-export' ? <ImportExportDialog /> : null}
       {dialog?.kind === 'new-story' ? <NewStoryDialog /> : null}
       {dialog?.kind === 'new-chat' ? <NewChatDialog characterId={dialog.characterId} /> : null}
+      {dialog?.kind === 'payload' ? <PayloadDialog /> : null}
       {dialog?.kind === 'prompt-templates' ? <PromptTemplatesDialog /> : null}
       {dialog?.kind === 'insights' ? <InsightsDialog /> : null}
       {dialog?.kind === 'card' ? <CardEditorDialog kind={dialog.card} id={dialog.id} /> : null}

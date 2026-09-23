@@ -1,7 +1,11 @@
 /**
- * Blocks: what the payload is made of, and what each part costs.
+ * The payload report: what the request is made of, and what each part costs.
  *
- * Lifted verbatim out of `Inspector.tsx`; the markup is unchanged.
+ * It lives in `dialogs/payload.tsx` now, opened from the composer's cache pill —
+ * the control that measures the request is the control that explains it. The
+ * `Warm cache` and `Re-measure` buttons it used to carry are gone from here: the
+ * composer re-measures on every change, and warming has its own rows in Settings
+ * and the command palette. A report is allowed to be a report.
  */
 
 import { useState } from 'react';
@@ -31,9 +35,6 @@ const VOLATILITY_COLOR: Record<0 | 1 | 2 | 3, string> = {
 export function BlocksTab() {
   const bundle = useStore((state) => state.bundle);
   const plan = useStore((state) => state.plan);
-  const runWarm = useStore((state) => state.runWarm);
-  const refreshPlan = useStore((state) => state.refreshPlan);
-  const activeScene = useStore((state) => state.activeScene);
   const [open, setOpen] = useState<BlockKind | null>(null);
 
   if (!bundle) return null;
@@ -83,21 +84,7 @@ export function BlocksTab() {
       ) : null}
 
       <Card>
-        <SectionTitle
-          title="Payload"
-          hint={`${plan.messages} messages · ${formatTokens(plan.totalTokens)} tok`}
-          action={
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{ padding: '0.2rem 0.45rem' }}
-              onClick={() => void runWarm()}
-              title="Pay one deliberate miss so every later turn on this prefix is a hit"
-            >
-              Warm cache
-            </button>
-          }
-        />
+        <SectionTitle title="Payload" hint={`${plan.messages} messages · ${formatTokens(plan.totalTokens)} tok`} />
         <ul className="space-y-1.5">
           {plan.blocks.map((block) => {
             const volatility = block.volatility;
@@ -206,17 +193,9 @@ export function BlocksTab() {
         </Card>
       ) : null}
 
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="button"
-          className="btn btn-ghost w-full"
-          onClick={() => void refreshPlan({ storyId: bundle.story.id, sceneId: activeScene()?.id ?? '', mode: 'continue' })}
-        >
-          Re-measure payload
-        </button>
-      </div>
       <p className="mt-2 text-[10.5px] leading-snug text-faint">
         Measuring is a dry run. It builds the exact request and reports what it would cost, and spends nothing.
+        The composer re-measures as you write, so this report is always the next turn's.
       </p>
     </div>
   );

@@ -97,21 +97,24 @@ function Ring({ ratio, size }: { ratio: number; size: number }) {
  * The one-line cache readout.
  *
  * This is what the writer sees by default: a live hit rate, the price of the
- * turn, and how much the cache took off it. Everything the full meter adds —
+ * turn, and how much the cache took off it. Everything the full report adds —
  * predicted versus measured, the token split, the block-level attribution — is
  * behind this button, because it is worth reading deliberately and not worth
  * reading while writing.
+ *
+ * It *opens* rather than expands. The breakdown used to grow above the composer,
+ * which pushed the writing surface down the screen at the exact moment the writer
+ * had asked to look at something else; it is a dialog now, and the pill keeps its
+ * place in the row.
  */
 export function CachePill({
   plan,
   busy = false,
-  open,
-  onToggle,
+  onOpen,
 }: {
   plan: PayloadPlan | null;
   busy?: boolean;
-  open: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
 }) {
   if (!plan) {
     return (
@@ -131,9 +134,9 @@ export function CachePill({
       type="button"
       className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] transition-colors"
       style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-      onClick={onToggle}
-      aria-expanded={open}
-      title="This turn's payload: predicted cache hit, cost, and saving. Open for the full breakdown."
+      onClick={onOpen}
+      aria-haspopup="dialog"
+      title="This turn's payload: predicted cache hit, cost, and saving. Open for the block-by-block breakdown."
     >
       <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: tone }} />
       <span className="num" style={{ color: tone }}>
@@ -150,9 +153,7 @@ export function CachePill({
           </span>
         </>
       ) : null}
-      <span className={`ml-0.5 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} style={{ color: 'var(--text-faint)' }}>
-        <IconChevronDown size={10} />
-      </span>
+      <span className="ml-0.5 text-faint">…</span>
     </button>
   );
 }

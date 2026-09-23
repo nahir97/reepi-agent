@@ -17,7 +17,7 @@ import { countWords } from '../../shared/tokens.ts';
 import { EFFORT_LABELS, MODELS } from '../../shared/types.ts';
 import type { ChatRequest, ModelId, ReasoningEffort } from '../../shared/types.ts';
 import { useStore } from '../store.ts';
-import { CacheMeter, CachePill, cacheSafetySentence } from './CacheMeter.tsx';
+import { CachePill, cacheSafetySentence } from './CacheMeter.tsx';
 import { PersonaSwitch } from './PersonaSwitch.tsx';
 import { IconAlert, IconClose, IconFeather, IconNote, IconSend, IconSettings, IconStop } from './icons.tsx';
 
@@ -34,12 +34,12 @@ export function Composer() {
   const runTurn = useStore((state) => state.runTurn);
   const abort = useStore((state) => state.abort);
   const toast = useStore((state) => state.toast);
+  const openDialog = useStore((state) => state.openDialog);
 
   const [text, setText] = useState('');
   const [authorNote, setAuthorNote] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
   const [overridesOpen, setOverridesOpen] = useState(false);
-  const [meterOpen, setMeterOpen] = useState(false);
   const [overrides, setOverrides] = useState<NonNullable<ChatRequest['overrides']>>({});
   const [overridesDirty, setOverridesDirty] = useState(false);
 
@@ -149,7 +149,11 @@ export function Composer() {
             wraps rather than squeezes: on a 320px phone the persona chip would
             otherwise be compressed under its own label. */}
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <CachePill plan={plan} busy={planBusy} open={meterOpen} onToggle={() => setMeterOpen((value) => !value)} />
+          {/* The pill is the summary and the way in: tapping it opens the full
+              block analysis, which is the same breakdown the story panel used to
+              carry. The control that measures the payload is the control that
+              explains it. */}
+          <CachePill plan={plan} busy={planBusy} onOpen={() => openDialog({ kind: 'payload' })} />
           <PersonaSwitch />
           {safety ? (
             <span
@@ -163,18 +167,14 @@ export function Composer() {
           ) : null}
         </div>
 
-        {meterOpen ? (
-          <div className="mb-2 space-y-2">
-            <CacheMeter plan={plan} busy={planBusy} />
-            {safety ? (
-              <p className="flex items-start gap-1.5 text-[11.5px] leading-snug sm:hidden" style={{ color: safetyTone }}>
-                <span className="mt-px shrink-0">
-                  {safety.level === 'safe' ? <IconFeather size={12} /> : <IconAlert size={12} />}
-                </span>
-                <span>{safety.text}</span>
-              </p>
-            ) : null}
-          </div>
+        {/* The cache-safety sentence on a phone, where the pill cannot carry it. */}
+        {safety ? (
+          <p className="mb-2 flex items-start gap-1.5 text-[11.5px] leading-snug sm:hidden" style={{ color: safetyTone }}>
+            <span className="mt-px shrink-0">
+              {safety.level === 'safe' ? <IconFeather size={12} /> : <IconAlert size={12} />}
+            </span>
+            <span>{safety.text}</span>
+          </p>
         ) : null}
 
         <div className="relative" ref={popover}>

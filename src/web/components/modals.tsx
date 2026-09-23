@@ -18,6 +18,7 @@ export {
   ImportExportDialog,
   NewStoryDialog,
   NewChatDialog,
+  PayloadDialog,
   PromptTemplatesDialog,
   ConfirmDialog,
 } from './dialogs/index.ts';

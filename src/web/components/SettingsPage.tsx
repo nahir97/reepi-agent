@@ -30,6 +30,7 @@ import {
   IconDownload,
   IconGauge,
   IconPen,
+  IconScroll,
   IconTemplate,
   IconTrash,
   IconUsers,
@@ -70,6 +71,13 @@ export function SettingsPage() {
           hint: 'every block, with its token count and volatility',
           icon: IconPen,
           run: () => openDialog({ kind: 'story-settings' }),
+        },
+        {
+          id: 'payload-report',
+          label: 'Payload report',
+          hint: 'the next turn, block by block — the composer pill opens this too',
+          icon: IconScroll,
+          run: () => openDialog({ kind: 'payload' }),
         },
         {
           id: 'duplicate',

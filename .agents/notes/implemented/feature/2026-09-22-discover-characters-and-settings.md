@@ -120,10 +120,15 @@ on the dev server the sheet had the four destinations. Both were verified.)
    armed on keys, the memories with their subject, the scene's state fields with
    their values, the cast with their token weights, the pending Director notes. When
    a section is empty it says what to do about it rather than printing a zero.
-3. **Payload** — the block analysis and the prompt, unchanged.
-4. **This conversation** — `Search messages`, `Rename`, `Re-measure`, `Warm the
-   cache`, `Duplicate`, `Delete`, `Import & export`. Every row calls an action the
-   app already had; a panel that only reads is a panel you have to leave to act.
+3. **This conversation** — `Search messages`, `Rename`, `Duplicate`, `Delete`,
+   `Import & export`. Every row calls an action the app already had; a panel that
+   only reads is a panel you have to leave to act.
+
+There is deliberately **no payload group and no cost row**. A first version of this
+page had both, plus `Re-measure` and `Warm the cache`, and it was accurate and
+cluttered: a rail that reports on the request is a rail competing with the prose for
+the same pixels, which is the failure `progressive-disclosure-of-instrumentation`
+was written to end. The next section is where that tooling went.
 
 The previews are the substance the reference comparison asked for — world lore
 lives in the panel, visibly, without a click — and they cost one `useSectionItems`
@@ -134,6 +139,25 @@ section it previews reads.
 a decision: the app's own rule is that confirmations happen in place, and a native
 prompt is the one dialog here that does not follow it. It is recorded under
 Consequences.
+
+### Where the payload and prompt tooling went when it left the panel
+
+The rail's `Prompt` section — the row that answered "which prompt is this chat using?" — is gone with
+the rest of the payload group, and nothing it did was lost:
+
+- **Seeing what a template would write** is the prompt-templates dialog's own list (name, blurb, blocks
+  it fills), which is where a writer goes to author one, and the per-block `Templates` menu in Story
+  settings, which is where they apply one to a single field.
+- **Applying one** is unchanged: `applyTemplate` through the one story PATCH, with the frozen-block
+  warning in place.
+- **The block-by-block report** is `dialogs/payload.tsx`, opened by the composer's cache pill and by a
+  `Payload report` row in Settings.
+- **`Warm the cache`** is in the composer's overrides popover and in Settings.
+
+The `appliedTemplate` session record stayed, and so did `setAppliedTemplate`. The only thing that read
+it was the rail's Prompt row, so it is now read by nothing — recorded under Consequences rather than
+deleted, because the next surface that wants to say "this chat speaks in House voice" is the reason it
+exists and it is three lines to wire.
 
 ### `Search messages` filters the transcript in place
 
@@ -151,35 +175,10 @@ no index, no migration — because a conversation is already loaded in memory an
   a blank page, and `openStory` clears both the filter and the field, so a search for
   someone else's words can never outlive the story it was typed in.
 
-The `ChatProfile`/`InspectMenu` split this replaces is gone: `InspectMenu` now owns
-identity, the two section groups and the verbs, and `FirstRun`'s stale
-"open an existing story" button reads from the story list it still has.
-
-### The Prompt section is the answer to "which prompt is this chat using?"
-
-A new `RightTab`, `templates`, filed in the rail's menu immediately after `Payload` — the one entry
-that is not a `BLOCK_ORDER` kind, because a prompt is not a slice of the payload, it is the text that
-lands in several of them. `Inspector` renders it like any other section, so the band, the back control
-and the summary come for free.
-
-What the section does:
-
-- Lists every template with its blurb, its `builtin` chip, and the blocks it fills — each block chip
-  carrying its volatility colour, the same table the story editor warns with, so the two surfaces
-  cannot disagree about what an edit costs.
-- **Applies through `applyTemplate`**, the existing action: one batched `updateStory` PATCH for the
-  template's blocks, then a toast earned by reading the story back. No new action, no new route, no
-  second write path.
-- **Confirms in place**, naming every block it will overwrite and calling out any frozen (volatility
-  0) one as the whole-prefix invalidation it is. Same wording the template dialog already uses.
-- **Reports the last applied template for the session, and computes the match from the story.**
-  `applyTemplate` records `ui.appliedTemplate = { templateId, name, at }` *after* the read-back, so the
-  row can never name a prompt whose text is not in the story. The count is derived by comparing the
-  template's block text against the story's own fields, so a hand-edit afterwards makes the row say
-  `applied · 2/3 match` instead of insisting on a template that is no longer true.
-
-**It is not persisted, and the UI says so** — `applied this session`. A reload shows `N templates`
-with no claim about ownership.
+`InspectMenu` owns identity, the Context group and the verbs. `SECTIONS` shrank to
+the six material sections and `RightTab` with it — `blocks` and `templates` are no
+longer section ids at all, so the rail cannot grow a request-shaped row back by
+accident, and the command palette lost its `Inspector · …` entries with them.
 
 ### One new dialog, for the ordering problem the old flow had
 
@@ -216,6 +215,17 @@ becomes a repeated need, and it is recorded here so that is a decision rather th
 directory list is a list nobody reads, and the palette is a way to *reach* things, not a way to learn
 what exists. The `Cost & cache` row had already been rewritten once because it behaved as a second
 launcher for navigation; the same argument now applies to the whole list.
+
+**Keeping the payload group in the story panel.** Rejected after living with it for one round of
+feedback, and it is the more interesting rejection because the first version of it was *correct*.
+`Payload`, `Prompt`, `Cost & cache`, `Re-measure` and `Warm the cache` all reported truthfully on the
+next request — and that was the problem: the rail is a panel a writer keeps open while reading, so a
+report on the request sat beside the prose, competing for the same pixels, which is the exact failure
+`progressive-disclosure-of-instrumentation` was written to end. They also asked a question — "what does
+the next turn cost" — that the writer has while *writing*. So the tooling moved to the control that
+measures it: the composer's cache pill now opens the block-by-block report as a dialog, and the prompt
+library stayed in Settings and Story settings. Re-measure and Warm live in the composer's overrides
+popover and in Settings, because they are acts on the request rather than facts about the story.
 
 **Copying the reference app's information architecture exactly (Discover / Personas / Image Studio as
 three sidebar sections).** Rejected as a copy rather than a design. `Personas` became a scope on a
@@ -267,6 +277,16 @@ whose current position a writer has to notice.
 - **Message search is a filter, not a jump-to-result list.** With ten turns it is obviously right;
   with a thousand it would want a match list with positions. `Message.seq` and the scene filter are
   already there to build one, and the field is the seam it would attach to.
+- **`ui.appliedTemplate` now has no reader.** The rail's Prompt row was the only surface that displayed
+  it, so the record is written and never shown. Kept rather than deleted because "this chat speaks in
+  House voice" is a fact worth having a home for, and the wiring is three lines; if it is still unread
+  at the next pass over this panel it should go.
+- **The payload report moved from the rail to a dialog**, which trades one kind of friction for
+  another. It is no longer visible while reading — deliberate — but it is also no longer reachable
+  without the composer on screen, which is why Settings carries a `Payload report` row too.
+- **`RightTab` is now story material only.** That is the structural half of this change: the rail
+  cannot regrow a request-shaped row without editing the type, which is the kind of guard that keeps a
+  rejected shape rejected.
 
 ## Testing
 
@@ -307,3 +327,8 @@ whose current position a writer has to notice.
 - **Message search end to end** on a story with ten turns: the field appears focused, `plaster`
   narrows `turns before=10 after=3 counter=3 of 10`, a no-match needle renders the explicit empty
   state with zero cards, clearing restores 10, and Escape closes the field. Zero page errors.
+- **The slim panel, read off the DOM at 320/390/768/1280**: the drawer's front page contains
+  `CONTEXT` and `THIS CONVERSATION` and no `PAYLOAD` group, no `Cost & cache` row, no
+  `Re-measure` and no `Warm the cache`; `documentElement.scrollWidth === clientWidth` at all four,
+  and the payload dialog opens from the composer's cache pill at all four (its title reads
+  *The next turn's payload*) with zero page errors.
