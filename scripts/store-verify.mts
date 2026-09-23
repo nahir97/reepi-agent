@@ -24,6 +24,7 @@ const { startChat, removeStoryPreservingCast } = await import('../src/server/cha
 const { recreateStoryBundle } = await import('../src/server/routes/library/bundle.ts');
 const { expandMacros, macroContextOf, macroCatalogue } = await import('../src/server/macros.ts');
 const { compose } = await import('../src/server/composer.ts');
+const { composeTurn } = await import('../src/server/orchestrator.ts');
 const { DEFAULT_CALIBRATION } = await import('../src/shared/tokens.ts');
 
 openDatabase(join(dir, 'split.sqlite'));
@@ -209,6 +210,34 @@ check('blank greeting slots are not offered', Boolean(
   messages.list(only.story.id).length === 1 &&
   messages.list(only.story.id)[0]?.variants[0] === 'Only this one.',
 ));
+
+/* --- a regenerate is a re-sample, not a rewrite -----------------------------
+ *
+ * The verb excludes the message it replaces from the history and asks for the same
+ * next beat a `continue` asks for. It used to send "write the next beat again,
+ * differently", which made the model reason about a response it could not see and
+ * paraphrase it. These pin the payload, not the wording's intent: regenerate's
+ * final wire message is the continuation instruction, the replaced text is absent
+ * from its history, and a plain continue still carries that text. */
+if (chat) {
+  const chatScene = scenes.list(chat.id)[0];
+  const greeting = messages.list(chat.id)[0];
+  const historyText = (payload: NonNullable<ReturnType<typeof composeTurn>>): string =>
+    payload.composed.blocks.find((block) => block.kind === 'history')?.text ?? '';
+  const lastWire = (payload: NonNullable<ReturnType<typeof composeTurn>>): string =>
+    String(payload.messages[payload.messages.length - 1]?.content ?? '');
+  const needle = (greeting?.variants[greeting.activeVariant] ?? '').slice(0, 24);
+  const regen = chatScene && greeting
+    ? composeTurn({ storyId: chat.id, sceneId: chatScene.id, mode: 'regenerate', messageId: greeting.id })
+    : null;
+  const cont = chatScene ? composeTurn({ storyId: chat.id, sceneId: chatScene.id, mode: 'continue' }) : null;
+
+  check('regenerate sends the same instruction as a continue', Boolean(
+    regen && cont && lastWire(regen) === lastWire(cont) && lastWire(regen) === 'Continue the scene directly from where it stops.',
+  ));
+  check('regenerate drops the message it replaces from history', Boolean(regen && needle && !historyText(regen).includes(needle)));
+  check('a continue still carries it', Boolean(cont && needle && historyText(cont).includes(needle)));
+}
 
 /* --- the cast is a library: one card, many casts ---------------------------
    The card keeps one definition and one home; a second story adopts it. An edit

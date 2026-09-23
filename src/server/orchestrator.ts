@@ -294,9 +294,15 @@ function buildComposerInput(args: ComposerArgs): ComposerInput {
 
 /**
  * The final user message. Always non-empty: a request that ends on a system
- * message is avoided, and the instruction differs by intent. For a swipe the
- * transcript already ends with the writer's turn, so the instruction only needs
- * to ask for a different attempt.
+ * message is avoided, and the instruction differs by intent.
+ *
+ * A regenerate is **the same request as a continue**. It differs only in where the
+ * result is kept (a new variant on the message it replaces) and in excluding that
+ * message from the history, so the model is asked for the beat the transcript calls
+ * for — not for a rewrite of a text it cannot see. The old wording, "write the next
+ * beat again, differently", made the model reason about the previous response and
+ * produce a paraphrase of it; the variety a swipe needs comes from sampling, which
+ * a fresh call to the same prompt already provides.
  */
 function turnInstruction(request: ChatRequest): string {
   if (request.mode === 'send') return (request.text ?? '').trim();
@@ -305,8 +311,9 @@ function turnInstruction(request: ChatRequest): string {
       ? 'Write my next turn, following the brief.'
       : 'Write my next turn.';
   }
-  if (request.mode === 'continue') return 'Continue the scene directly from where it stops.';
-  return 'Write the next beat again, differently.';
+  /* `continue` and `regenerate` — and `variant`, which nothing sends yet — all ask
+     for the next beat from where the transcript stops. */
+  return 'Continue the scene directly from where it stops.';
 }
 
 /** Prefill rides only on fresh generations, where the shape is predictable. */
