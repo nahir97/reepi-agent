@@ -154,13 +154,15 @@ export function composeTurn(request: ChatRequest): TurnPayload | null {
   /* Transcript window, with hysteresis. */
 
   const all = messages.list(story.id, scene.id).filter((message) => !message.disabled);
-  // A swipe rewrites a message, so that message must not appear in the history it
-  // is being asked to replace.
+  /* A regenerate replaces one turn, so its context is the transcript **before** that
+     turn: the message and everything after it are not part of the request. Keeping
+     the later turns would ask the model for a beat that follows *them* rather than a
+     replacement for this one. Every other verb sees the whole scene. */
   const redoing =
     request.mode === 'regenerate' || request.mode === 'variant' ? request.messageId : undefined;
-  const live = all.filter(
-    (message) =>
-      message.id !== redoing && (message.variants[message.activeVariant] ?? '').trim().length > 0,
+  const cut = redoing ? all.findIndex((message) => message.id === redoing) : -1;
+  const live = (cut >= 0 ? all.slice(0, cut) : all).filter(
+    (message) => (message.variants[message.activeVariant] ?? '').trim().length > 0,
   );
 
   const tokensPerMessage = live.map(
@@ -281,6 +283,9 @@ function buildComposerInput(args: ComposerArgs): ComposerInput {
             .join('\n')
         : null,
     continueMode: request.mode === 'continue',
+    /* A regenerate replays the same context rather than steering it: no per-turn
+       cue, and no generated clause in the post-history instruction. */
+    resample: request.mode === 'regenerate' || request.mode === 'variant',
     userTurn: turnInstruction(request),
     calibration: args.calibration,
     includeTools: overrides.includeTools ?? false,
@@ -293,16 +298,18 @@ function buildComposerInput(args: ComposerArgs): ComposerInput {
 }
 
 /**
- * The final user message. Always non-empty: a request that ends on a system
- * message is avoided, and the instruction differs by intent.
+ * The final user message, for the verbs that have one.
  *
- * A regenerate is **the same request as a continue**. It differs only in where the
- * result is kept (a new variant on the message it replaces) and in excluding that
- * message from the history, so the model is asked for the beat the transcript calls
- * for — not for a rewrite of a text it cannot see. The old wording, "write the next
- * beat again, differently", made the model reason about the previous response and
- * produce a paraphrase of it; the variety a swipe needs comes from sampling, which
- * a fresh call to the same prompt already provides.
+ * A **regenerate has none**, and that is the whole point: its context is the
+ * transcript up to the turn it replaces, and the model generates the beat that
+ * follows — exactly what the original call did, drawn again. The old wording
+ * ("write the next beat again, differently") made it reason about a text it could
+ * not see and paraphrase it; the follow-up, borrowing the continue sentence, still
+ * told it what to do. Sampling is what makes a swipe different, and a chat request
+ * whose transcript ends on the writer's turn needs no cue to answer it.
+ *
+ * `continue` does need one: its transcript ends on an assistant line, so there is
+ * nothing to answer until it is asked to keep going.
  */
 function turnInstruction(request: ChatRequest): string {
   if (request.mode === 'send') return (request.text ?? '').trim();
@@ -311,9 +318,9 @@ function turnInstruction(request: ChatRequest): string {
       ? 'Write my next turn, following the brief.'
       : 'Write my next turn.';
   }
-  /* `continue` and `regenerate` — and `variant`, which nothing sends yet — all ask
-     for the next beat from where the transcript stops. */
-  return 'Continue the scene directly from where it stops.';
+  if (request.mode === 'continue') return 'Continue the scene directly from where it stops.';
+  /* `regenerate` and `variant` (which nothing sends yet) — no instruction. */
+  return '';
 }
 
 /** Prefill rides only on fresh generations, where the shape is predictable. */

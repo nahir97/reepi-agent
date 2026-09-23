@@ -79,7 +79,13 @@ export type ComposerInput = {
   impersonateBrief: string | null;
   /** Set for `continue` — asks for an uninterrupted continuation. */
   continueMode: boolean;
-  /** The writer's newest turn, appended verbatim. */
+  /**
+   * Set for `regenerate` — the context is replayed, not steered. No generated clause
+   * is added to the post-history instruction and no per-turn cue is appended, so the
+   * model generates from exactly the transcript the original call saw.
+   */
+  resample: boolean;
+  /** The writer's newest turn, appended verbatim. Empty for a regenerate. */
   userTurn: string;
   calibration: Calibration;
   includeTools: boolean;
@@ -205,14 +211,19 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
   push('lore-after', renderLore(grouped.after, 'Just revealed:'));
   push('impersonate', input.impersonateBrief ?? '');
 
-  const instruct = [
-    story.instruct,
-    input.continueMode
+  /*
+   * The post-history instruction block: the writer's own directive, plus a cue from
+   * the verb. A regenerate gets no cue — the transcript already ends on the turn it
+   * is answering, and adding "write the next beat" would be an instruction the
+   * original call did not have. The writer's own `story.instruct` is part of the
+   * context and stays for every verb.
+   */
+  const turnCue = input.resample
+    ? ''
+    : input.continueMode
       ? `Continue the scene directly from where the transcript stops. Do not restate anything already written. ${input.targetWords} words.`
-      : `Write the next beat. Target ${input.targetWords} words.`,
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+      : `Write the next beat. Target ${input.targetWords} words.`;
+  const instruct = [story.instruct, turnCue].filter(Boolean).join('\n\n');
   push('instruct', instruct);
 
   push('author-note', input.authorNote);
@@ -278,7 +289,10 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
     messages.push({ role: 'system', content: tail.map((block) => block.text).join('\n\n') });
   }
 
-  messages.push({ role: 'user', content: input.userTurn });
+  /* The per-turn cue. A regenerate has none: the payload ends on the context the
+     original call sent — the volatile tail, or the transcript itself when the tail
+     is empty — and the model generates the beat that follows. */
+  if (input.userTurn.trim()) messages.push({ role: 'user', content: input.userTurn });
 
   /* ---- Chat Prefix Completion ---- */
 

@@ -211,33 +211,43 @@ check('blank greeting slots are not offered', Boolean(
   messages.list(only.story.id)[0]?.variants[0] === 'Only this one.',
 ));
 
-/* --- a regenerate is a re-sample, not a rewrite -----------------------------
+/* --- a regenerate replays the context, it does not steer it ----------------
  *
- * The verb excludes the message it replaces from the history and asks for the same
- * next beat a `continue` asks for. It used to send "write the next beat again,
- * differently", which made the model reason about a response it could not see and
- * paraphrase it. These pin the payload, not the wording's intent: regenerate's
- * final wire message is the continuation instruction, the replaced text is absent
- * from its history, and a plain continue still carries that text. */
-if (chat) {
-  const chatScene = scenes.list(chat.id)[0];
-  const greeting = messages.list(chat.id)[0];
-  const historyText = (payload: NonNullable<ReturnType<typeof composeTurn>>): string =>
-    payload.composed.blocks.find((block) => block.kind === 'history')?.text ?? '';
-  const lastWire = (payload: NonNullable<ReturnType<typeof composeTurn>>): string =>
-    String(payload.messages[payload.messages.length - 1]?.content ?? '');
-  const needle = (greeting?.variants[greeting.activeVariant] ?? '').slice(0, 24);
-  const regen = chatScene && greeting
-    ? composeTurn({ storyId: chat.id, sceneId: chatScene.id, mode: 'regenerate', messageId: greeting.id })
-    : null;
-  const cont = chatScene ? composeTurn({ storyId: chat.id, sceneId: chatScene.id, mode: 'continue' }) : null;
+ * The verb asks for nothing: its history is the transcript **before** the turn it
+ * replaces, and the payload carries no per-turn cue and no generated clause in the
+ * post-history instruction. Earlier versions either told the model to "write the
+ * next beat again, differently" (it reasoned about a text it could not see and
+ * paraphrased it) or borrowed the continue sentence (still an instruction the
+ * original call never had). These pin the payload: no cue, only what came before. */
+const replay = stories.create({ title: 'Replay' });
+const replayScene = scenes.create(replay.id, { title: 'Opening' });
+messages.create({ storyId: replay.id, sceneId: replayScene.id, role: 'user', variants: ['open the door'], origin: 'user' });
+const firstBeat = messages.create({
+  storyId: replay.id, sceneId: replayScene.id, role: 'assistant', variants: ['FIRST BEAT'], origin: 'narrator',
+});
+messages.create({ storyId: replay.id, sceneId: replayScene.id, role: 'user', variants: ['and then'], origin: 'user' });
+messages.create({ storyId: replay.id, sceneId: replayScene.id, role: 'assistant', variants: ['SECOND BEAT'], origin: 'narrator' });
 
-  check('regenerate sends the same instruction as a continue', Boolean(
-    regen && cont && lastWire(regen) === lastWire(cont) && lastWire(regen) === 'Continue the scene directly from where it stops.',
-  ));
-  check('regenerate drops the message it replaces from history', Boolean(regen && needle && !historyText(regen).includes(needle)));
-  check('a continue still carries it', Boolean(cont && needle && historyText(cont).includes(needle)));
-}
+const replayTurn = composeTurn({ storyId: replay.id, sceneId: replayScene.id, mode: 'regenerate', messageId: firstBeat.id });
+const replayHistory = replayTurn?.composed.blocks.find((block) => block.kind === 'history')?.text ?? '';
+const replayInstruct = replayTurn?.composed.blocks.find((block) => block.kind === 'instruct')?.text ?? '';
+check('regenerate replays only what came before the turn', Boolean(
+  replayHistory.includes('open the door') &&
+  !replayHistory.includes('FIRST BEAT') &&
+  !replayHistory.includes('SECOND BEAT'),
+));
+check('regenerate sends no per-turn cue', Boolean(
+  replayTurn &&
+  !replayTurn.messages.some((message) => /next beat|Continue the scene/i.test(String(message.content))),
+));
+check('regenerate adds no generated clause to the instruction', !/next beat|Continue the scene|Target \d+ words/i.test(replayInstruct));
+
+const replayContinue = composeTurn({ storyId: replay.id, sceneId: replayScene.id, mode: 'continue' });
+check('a continue still carries the transcript and its cue', Boolean(
+  replayContinue &&
+  (replayContinue.composed.blocks.find((block) => block.kind === 'history')?.text ?? '').includes('SECOND BEAT') &&
+  replayContinue.messages.some((message) => String(message.content).includes('Continue the scene directly')),
+));
 
 /* --- the cast is a library: one card, many casts ---------------------------
    The card keeps one definition and one home; a second story adopts it. An edit
