@@ -22,6 +22,7 @@ import { activeScene } from '../agents/context.ts';
 import { BUILTIN_TEMPLATES, isBuiltinTemplateId } from '../templates.ts';
 import { macroCatalogue, macroContextOf } from '../macros.ts';
 import { stories, templates, threads } from '../store/index.ts';
+import { transaction } from '../db.ts';
 import { param, reject } from './library/shared.ts';
 import { sanitisePromptTemplate } from './library/sanitise.ts';
 import type { MacroInfo, PromptTemplateBody } from '../../shared/api.ts';
@@ -84,7 +85,15 @@ mod.delete('/templates/:id', (c) => {
     return fail(c, 409, 'Built-in templates are read-only', 'Duplicate it to edit.');
   }
   if (!templates.get(id)) return fail(c, 404, 'Template not found');
-  templates.remove(id);
+
+  /* The story keeps the words — that has always been true — and it stops claiming
+     the template, because the link is now the only thing that could dangle. In one
+     transaction: a story pointing at a deleted template would report a prompt it
+     does not have. */
+  transaction(() => {
+    stories.clearTemplate(id);
+    templates.remove(id);
+  });
   return c.json<{ ok: true }>({ ok: true });
 });
 

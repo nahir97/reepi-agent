@@ -53,6 +53,11 @@ function writtenBlocks(draft: Draft): EditableBlock[] {
 }
 
 export function PromptTemplatesDialog() {
+  const dialog = useStore((state) => state.ui.dialog);
+  /* Which template to land on, when a caller named one — the composer's prompt
+     picker and the rail's Prompt row both send the writer straight to the template
+     their conversation is speaking in, instead of to the top of the list. */
+  const wanted = dialog?.kind === 'prompt-templates' ? (dialog.templateId ?? null) : null;
   const templates = useStore((state) => state.promptTemplates);
   const macros = useStore((state) => state.macros);
   const bundle = useStore((state) => state.bundle);
@@ -63,7 +68,7 @@ export function PromptTemplatesDialog() {
   const loadMacros = useStore((state) => state.loadMacros);
   const openDialog = useStore((state) => state.openDialog);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(wanted);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [creating, setCreating] = useState(false);
   const [confirmApply, setConfirmApply] = useState(false);
@@ -84,6 +89,12 @@ export function PromptTemplatesDialog() {
   useEffect(() => {
     if (selectedId === null && !creating && templates.length > 0) setSelectedId(templates[0]?.id ?? null);
   }, [selectedId, creating, templates]);
+
+  /* A caller that names a template after this dialog is already open must still be
+     honoured — the rail's Prompt row can open it while it is up. */
+  useEffect(() => {
+    if (wanted && !creating && templates.some((template) => template.id === wanted)) setSelectedId(wanted);
+  }, [wanted, creating, templates]);
 
   /* Reset the draft on a change of selection — and only then. Keying this on the
      selected *row* would let any store write that replaces the template object (a

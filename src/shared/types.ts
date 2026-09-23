@@ -186,6 +186,28 @@ export function templateStoryPatch(
   return patch;
 }
 
+/**
+ * Whether a story's block text still equals the template it was applied from.
+ *
+ * One definition, read by the composer's prompt picker and the rail's Prompt row,
+ * so the two cannot disagree about whether a story is still speaking its prompt.
+ * A template that has been edited since — or deleted, so the caller passes `null` —
+ * is not a mismatch; it is a question with no answer, and `null` says so.
+ */
+export function templateMatch(
+  template: PromptTemplate | null,
+  story: Pick<Story, 'contract' | 'genre' | 'style' | 'bible' | 'scenario' | 'exemplars' | 'instruct'>,
+): { filled: number; matching: number } | null {
+  if (!template) return null;
+  const blocks = filledBlocks(template);
+  let matching = 0;
+  for (const block of blocks) {
+    const field = EDITABLE_BLOCK_FIELD[block];
+    if ((template.blocks[block] ?? '') === (story[field] ?? '')) matching += 1;
+  }
+  return { filled: blocks.length, matching };
+}
+
 export const BLOCK_RANK: Record<BlockKind, number> = Object.fromEntries(
   BLOCK_ORDER.map((kind, index) => [kind, index]),
 ) as Record<BlockKind, number>;
@@ -370,6 +392,19 @@ export type Story = {
   /** Post-history instruction; the model sees this last. */
   instruct: string;
   personaId: string | null;
+  /**
+   * The prompt template this story speaks in, or `null` for "written by hand".
+   *
+   * **A link, not the text.** The blocks stay in the story's own columns, so a
+   * story still resolves its macros and still survives the template's deletion
+   * (`ON DELETE SET NULL`, never a cascade) — that part of "applying is copying"
+   * has not changed and must not. What the column buys is the one fact copying
+   * cannot express: *which* prompt was applied, so a conversation can say it,
+   * re-apply it after an edit, and be asked to switch. `null` is the honest state
+   * for a story whose blocks were written or edited by hand, and it is the state
+   * every existing story starts in.
+   */
+  templateId: string | null;
   /**
    * Set on a 1:1 character chat: the card the chat is about. A chat's cast is
    * exactly that card and its persona pool is the pool of the story that owns it,

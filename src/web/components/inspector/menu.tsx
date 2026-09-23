@@ -31,11 +31,12 @@
  * bottom is still reading the request top to bottom.
  */
 
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { formatTokens } from '../../../shared/cost.ts';
 import type { RightTab } from '../../store.ts';
 import { useStore } from '../../store.ts';
 import { Avatar } from '../Avatar.tsx';
+import { PromptPicker, usePromptSummary } from '../PromptPicker.tsx';
 import {
   IconBook,
   IconBrain,
@@ -45,6 +46,7 @@ import {
   IconLayers,
   IconPen,
   IconSearch,
+  IconTemplate,
   IconTrash,
   IconUser,
   IconUsers,
@@ -224,6 +226,50 @@ function SectionRow({ id }: { id: RightTab }) {
   );
 }
 
+/**
+ * The prompt row.
+ *
+ * A section-shaped row that opens into the picker rather than into a section,
+ * because there is nothing to drill into: the prompt *is* the choice, and the
+ * chooser is two controls. It closes over itself so the panel stays short.
+ */
+function PromptRow() {
+  const [open, setOpen] = useState(false);
+  const summary = usePromptSummary();
+
+  return (
+    <li>
+      <button
+        type="button"
+        className="group flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-[var(--accent-soft)]"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        title="The saved prompt text this conversation speaks in"
+      >
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border text-dim">
+          <IconTemplate size={14} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[12.5px] font-medium">Prompt</span>
+          <span className="num block truncate text-[10.5px] text-faint">{summary}</span>
+        </span>
+        <span
+          className="shrink-0 text-faint transition-transform"
+          style={{ transform: open ? 'rotate(90deg)' : undefined }}
+        >
+          <IconChevronRight size={12} />
+        </span>
+      </button>
+
+      {open ? (
+        <div className="mt-1 mb-1.5 ml-[2.375rem]">
+          <PromptPicker />
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 /** A row that does something, for the conversation verbs. */
 function ActionRow({
   label,
@@ -290,6 +336,10 @@ export function InspectMenu() {
 
       <GroupLabel title="Context" hint="the material the request is built from" />
       <ul className="p-1.5 pt-0">
+        {/* First, because it is the one row that shapes every other one: the prompt
+            is where the voice and the world are stated, and a writer looking at
+            "what is this conversation made of" is looking at its first answer. */}
+        <PromptRow />
         {SECTIONS.map((section) => (
           <SectionRow key={section.id} id={section.id} />
         ))}

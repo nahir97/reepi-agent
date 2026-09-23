@@ -43,7 +43,7 @@ const STORY_TEXT_FIELDS = [
 ] as const;
 const STORY_FLOAT_FIELDS = ['temperature', 'topP'] as const;
 const STORY_INT_FIELDS = ['maxTokens', 'targetWords', 'loreBudget', 'historyBudget'] as const;
-const STORY_NULLABLE_TEXT_FIELDS = ['personaId', 'cover'] as const;
+const STORY_NULLABLE_TEXT_FIELDS = ['personaId', 'cover', 'templateId'] as const;
 const STORY_FIELDS = [
   ...STORY_TEXT_FIELDS,
   ...STORY_FLOAT_FIELDS,

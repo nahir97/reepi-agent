@@ -23,6 +23,7 @@ function toStory(row: Row): Story {
     instruct: str(row.instruct),
     personaId: row.persona_id === null ? null : str(row.persona_id),
     characterId: row.character_id === null || row.character_id === undefined ? null : str(row.character_id),
+    templateId: row.template_id === null || row.template_id === undefined ? null : str(row.template_id),
     model: str(row.model, 'deepseek-flash') as ModelId,
     effort: str(row.effort, 'none') as ReasoningEffort,
     temperature: num(row.temperature, 1),
@@ -70,6 +71,7 @@ export const stories = {
       instruct: init.instruct ?? '',
       personaId: init.personaId ?? null,
       characterId: init.characterId ?? null,
+      templateId: init.templateId ?? null,
       model: init.model ?? 'deepseek-flash',
       effort: init.effort ?? 'none',
       temperature: init.temperature ?? 1,
@@ -91,14 +93,15 @@ export const stories = {
       .prepare(
         `INSERT INTO stories (
            id, title, genre, scenario, bible, style, exemplars, instruct, persona_id,
-           character_id, model, effort, temperature, top_p, max_tokens, target_words, contract,
-           lore_budget, history_budget, prefill, theme, cover, synopsis, created_at, updated_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           character_id, template_id, model, effort, temperature, top_p, max_tokens, target_words,
+           contract, lore_budget, history_budget, prefill, theme, cover, synopsis, created_at,
+           updated_at
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         story.id, story.title, story.genre, story.scenario, story.bible, story.style,
-        story.exemplars, story.instruct, story.personaId, story.characterId, story.model,
-        story.effort, story.temperature, story.topP, story.maxTokens, story.targetWords,
+        story.exemplars, story.instruct, story.personaId, story.characterId, story.templateId,
+        story.model, story.effort, story.temperature, story.topP, story.maxTokens, story.targetWords,
         story.contract,
         story.loreBudget, story.historyBudget, story.prefill, story.theme, story.cover,
         story.synopsis, story.createdAt, story.updatedAt,
@@ -116,16 +119,16 @@ export const stories = {
       .prepare(
         `UPDATE stories SET
            title=?, genre=?, scenario=?, bible=?, style=?, exemplars=?, instruct=?, persona_id=?,
-           character_id=?, model=?, effort=?, temperature=?, top_p=?, max_tokens=?, target_words=?,
-           contract=?,
+           character_id=?, template_id=?, model=?, effort=?, temperature=?, top_p=?, max_tokens=?,
+           target_words=?, contract=?,
            lore_budget=?, history_budget=?, prefill=?, theme=?, cover=?, synopsis=?, updated_at=?
          WHERE id=?`,
       )
       .run(
         merged.title, merged.genre, merged.scenario, merged.bible, merged.style,
-        merged.exemplars, merged.instruct, merged.personaId, merged.characterId, merged.model,
-        merged.effort, merged.temperature, merged.topP, merged.maxTokens, merged.targetWords,
-        merged.contract,
+        merged.exemplars, merged.instruct, merged.personaId, merged.characterId, merged.templateId,
+        merged.model, merged.effort, merged.temperature, merged.topP, merged.maxTokens,
+        merged.targetWords, merged.contract,
         merged.loreBudget, merged.historyBudget, merged.prefill, merged.theme, merged.cover,
         merged.synopsis, merged.updatedAt, id,
       );
@@ -149,6 +152,11 @@ export const stories = {
       .prepare(`SELECT * FROM stories WHERE character_id IN (${placeholders}) ORDER BY updated_at DESC`)
       .all(...characterIds) as Row[];
     return rows.map(toStory);
+  },
+
+  /** Forget a prompt template everywhere it is linked. One UPDATE, one transaction. */
+  clearTemplate(templateId: string): void {
+    getDb().prepare('UPDATE stories SET template_id = NULL WHERE template_id = ?').run(templateId);
   },
 
   remove(id: string): void {

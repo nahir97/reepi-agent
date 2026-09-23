@@ -291,10 +291,18 @@ export const IconUpload = (props: IconProps) => (
   </Glyph>
 );
 
+/**
+ * Settings: a toothed gear, not a spoked wheel.
+ *
+ * It was a circle with eight spokes for a season, which reads as a *sun* — the
+ * composer's settings control was reported as one, twice. A gear needs teeth on the
+ * ring rather than lines radiating from the middle, so the ring is a low-frequency
+ * star: eight rounded vertices alternating between two radii.
+ */
 export const IconSettings = (props: IconProps) => (
   <Glyph {...props}>
-    <circle cx="8" cy="8" r="2.2" />
-    <path d="M8 1.6v1.6M8 12.8v1.6M3.5 3.5l1.1 1.1M11.4 11.4l1.1 1.1M1.6 8h1.6M12.8 8h1.6M3.5 12.5l1.1-1.1M11.4 4.6l1.1-1.1" />
+    <path d="M8.00 2.40 9.28 2.86 10.58 2.46 11.42 3.58 12.84 3.72 13.14 5.12 14.26 5.96 13.86 7.26 14.32 8.54 13.40 9.52 13.40 10.94 12.14 11.46 11.58 12.76 10.16 12.76 9.18 13.68 8.00 12.90 6.82 13.68 5.84 12.76 4.42 12.76 3.86 11.46 2.60 10.94 2.60 9.52 1.68 8.54 2.14 7.26 1.74 5.96 2.86 5.12 3.16 3.72 4.58 3.58 5.42 2.46 6.72 2.86Z" />
+    <circle cx="8" cy="8" r="2.1" />
   </Glyph>
 );
 

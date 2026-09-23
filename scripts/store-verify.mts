@@ -189,6 +189,17 @@ check(
     templates.get(template.id)?.blocks.contract === undefined,
 );
 check('templates.list orders by sort_order', templates.list()[0]?.id === template.id);
+
+/* A story owns the *link* to the prompt it was applied from; the words stay its
+   own. Deleting the template must therefore leave the prose and drop the claim —
+   `clearTemplate` is what the delete route runs inside its transaction. */
+const prompted = stories.create({ title: 'Prompted' });
+stories.update(prompted.id, { contract: 'Obey {{user}}.', templateId: template.id });
+check('a story records the template it speaks in', stories.get(prompted.id)?.templateId === template.id);
+stories.clearTemplate(template.id);
+check('deleting a template clears the link', stories.get(prompted.id)?.templateId === null);
+check('deleting a template keeps the words', stories.get(prompted.id)?.contract === 'Obey {{user}}.');
+
 templates.remove(template.id);
 check('templates.remove', templates.get(template.id) === null);
 

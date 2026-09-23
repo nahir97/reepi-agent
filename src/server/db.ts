@@ -40,6 +40,16 @@ CREATE TABLE IF NOT EXISTS stories (
    * not at CREATE TABLE time, so the order is safe.
    */
   character_id    TEXT REFERENCES characters(id) ON DELETE CASCADE,
+  /*
+   * The prompt template this story was last applied from, or NULL for hand-written.
+   * Deliberately a plain TEXT column and *not* a foreign key: several of the
+   * templates that ship are code constants with no row in prompt_templates, so an
+   * FK would reject the common case on the first apply. Integrity is therefore the
+   * application's: the story PATCH validates the id against the built-ins and the
+   * stored rows, and deleting a template clears the links to it in the same
+   * transaction. A stale id can only ever mean "no template", never a broken join.
+   */
+  template_id     TEXT,
   model           TEXT NOT NULL DEFAULT 'deepseek-flash',
   effort          TEXT NOT NULL DEFAULT 'none',
   temperature     REAL NOT NULL DEFAULT 1.0,
@@ -325,6 +335,10 @@ const ADDITIVE_MIGRATIONS: { table: string; column: string; ddl: string }[] = [
     column: 'home_story_id',
     ddl: 'TEXT REFERENCES stories(id) ON DELETE SET NULL',
   },
+  /* v3: which prompt a story speaks in. Additive and nullable, so every existing
+     story keeps its blocks and simply reports no template — which is true. No FK,
+     for the reason given at the column. */
+  { table: 'stories', column: 'template_id', ddl: 'TEXT' },
 ];
 
 /**

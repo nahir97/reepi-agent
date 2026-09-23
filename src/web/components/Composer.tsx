@@ -19,6 +19,7 @@ import type { ChatRequest, ModelId, ReasoningEffort } from '../../shared/types.t
 import { useStore } from '../store.ts';
 import { CachePill, cacheSafetySentence } from './CacheMeter.tsx';
 import { PersonaSwitch } from './PersonaSwitch.tsx';
+import { PromptPicker } from './PromptPicker.tsx';
 import { IconAlert, IconClose, IconFeather, IconNote, IconSend, IconSettings, IconStop } from './icons.tsx';
 
 const EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'max'];
@@ -365,19 +366,39 @@ function Overrides({ overrides, story, onChange, onReset }: OverridesProps) {
     set(key, Math.min(max, Math.max(min, parsed)) as never);
   };
 
+  /* What an untouched field will actually send. The placeholder used to say
+     "Story default" and nothing else, which meant the popover never told the writer
+     what the story was set to — the one fact the control exists to disclose. */
+  const inherited = story
+    ? {
+        effort: EFFORT_LABELS[story.effort].replace(/\s*\(default\)$/, ''),
+        model: MODELS[story.model].label.replace('DeepSeek ', ''),
+      }
+    : null;
+
   return (
     <div
-      className="animate-rise absolute right-0 bottom-full z-30 mb-2 w-[min(94vw,26rem)] rounded-xl border border-border p-3"
+      className="animate-rise absolute right-0 bottom-full z-30 mb-2 w-[min(94vw,26rem)] max-h-[min(80dvh,44rem)] overflow-y-auto rounded-xl border border-border p-3"
       style={{ background: 'var(--panel-raised)', boxShadow: 'var(--shadow-3)' }}
       role="group"
       aria-label="Overrides for this turn"
     >
       <div className="mb-2.5 flex items-center gap-2">
         <span className="eyebrow eyebrow-accent">This turn only</span>
-        <span className="text-[10.5px] text-faint">unset fields inherit the story</span>
-        <button type="button" className="btn btn-ghost ml-auto" style={{ padding: '0.2rem 0.4rem' }} onClick={onReset}>
+        <span className="min-w-0 flex-1 truncate text-[10.5px] text-faint">
+          {inherited ? `unset fields inherit the story — ${inherited.effort}, ${inherited.model}` : 'unset fields inherit the story'}
+        </span>
+        <button type="button" className="btn btn-ghost ml-auto shrink-0" style={{ padding: '0.2rem 0.4rem' }} onClick={onReset}>
           Reset
         </button>
+      </div>
+
+      {/* The prompt is not a per-turn override — it is what the conversation *is* —
+          but this popover is where the writer already is when they want to change
+          the model or the voice, and the two decisions belong in one place. It sits
+          above the turn-scoped controls and says so. */}
+      <div className="mb-3">
+        <PromptPicker />
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
@@ -391,7 +412,9 @@ function Overrides({ overrides, story, onChange, onReset }: OverridesProps) {
             value={overrides.model ?? ''}
             onChange={(event) => set('model', (event.target.value || undefined) as ModelId | undefined)}
           >
-            <option value="">Story default{story ? ` (${MODELS[story.model].label})` : ''}</option>
+            <option value="">
+              {story ? `Story default — ${MODELS[story.model].label}` : 'Story default'}
+            </option>
             {(Object.keys(MODELS) as ModelId[]).map((model) => (
               <option key={model} value={model}>
                 {MODELS[model].label}
@@ -410,7 +433,7 @@ function Overrides({ overrides, story, onChange, onReset }: OverridesProps) {
             value={overrides.effort ?? ''}
             onChange={(event) => set('effort', (event.target.value || undefined) as ReasoningEffort | undefined)}
           >
-            <option value="">Story default</option>
+            <option value="">{story ? `Story default — ${EFFORT_LABELS[story.effort].replace(/\s*\(default\)$/, '')}` : 'Story default'}</option>
             {EFFORTS.map((effort) => (
               <option key={effort} value={effort}>
                 {EFFORT_LABELS[effort]}

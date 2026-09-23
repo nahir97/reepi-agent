@@ -160,7 +160,7 @@ export type Dialog =
   | { kind: 'new-story' }
   | { kind: 'new-chat'; characterId: string }
   | { kind: 'payload' }
-  | { kind: 'prompt-templates' }
+  | { kind: 'prompt-templates'; templateId?: string }
   | { kind: 'insights' }
   | { kind: 'card'; card: CardKind; id: string }
   | { kind: 'confirm'; title: string; body: string; confirmLabel: string; danger: boolean; run: () => void }

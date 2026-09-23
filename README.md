@@ -265,6 +265,12 @@ click away and none of it is on the default screen.
   conversation is stored, so a reload lands you back in it with every receipt intact; **Stop** ends
   a turn without recording anything, **New chat** clears the conversation and deletes none of the
   content. It never writes prose, dialogue or your persona, and it cannot delete anything.
+- **A conversation owns the prompt it speaks in.** Applying a template copies its text into the
+  story's own blocks *and* records which template it was — `stories.template_id`, dropped to `null`
+  if that template is ever deleted, never taking the words with it. So a chat can say what it is
+  speaking in and whether it has drifted: the rail's **Prompt** row and the composer's settings
+  popover both show `House voice · applied` or `House voice · 2/3 match`, and both change it in one
+  action from a list naming the blocks each template fills.
 - **Prompt templates and macros.** The blocks you author — voice contract, genre, style, bible,
   scenario, exemplars, instruction — can be saved as named templates and applied to any story in
   one action, singly or several at once. The story panel's **Prompt** section is where a conversation
@@ -281,6 +287,10 @@ click away and none of it is on the default screen.
   the machinery.
 - **Attribution.** Any turn can be reassigned to a character, so an ensemble scene
   reads as a conversation between named speakers rather than a wall of "Narrator".
+- **The composer's settings popover states what it inherits** — `Story default — Max`,
+  `Story default — DeepSeek V4 Pro` — instead of leaving the writer to guess what "story default"
+  means, and it carries the prompt picker, because "change the model" and "change the voice" are one
+  decision made in one place.
 - **One cost pill** in the composer — live predicted hit rate, the price of the
   turn, and what the cache took off it. Tapping it opens the **payload report** as a
   dialog: every block in the order the provider sees, its token share, volatility
@@ -494,6 +504,7 @@ src/
       PersonaSwitch.tsx  the composer's persona chip: who the model reads as you, switchable
       MacroPicker.tsx    the macro reference (live values) and the insert-a-token control
       CacheMeter.tsx     the pill, and the full payload meter behind it
+      PromptPicker.tsx   which prompt a conversation speaks in, and the one action that changes it
       Inspector.tsx      rail chrome: the band, the menu, the open section
       inspector/         one module per section: cast, persona, lore, memory, scene, director, the
                          menu that lists them, and blocks.tsx — the payload report's body

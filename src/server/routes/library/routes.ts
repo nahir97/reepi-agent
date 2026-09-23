@@ -31,8 +31,10 @@ import {
   personas,
   scenes,
   stories,
+  templates,
   threads,
 } from '../../store/index.ts';
+import { isBuiltinTemplateId } from '../../templates.ts';
 import { chatsOfCharacter, removeStoryPreservingCast, startChat } from '../../chats.ts';
 import { param, reject } from './shared.ts';
 import {
@@ -103,6 +105,15 @@ mod.patch('/stories/:id', async (c) => {
 
   const sanitised = sanitiseStory(body);
   if (sanitised.rejected.length > 0) return reject(c, 'story fields', sanitised.rejected);
+
+  /* `templateId` is a plain column with no foreign key — the code-shipped starters
+     are constants, not rows, so an FK would reject them — which makes this the one
+     place the id can be checked. Both halves are required: a built-in, or a stored
+     row the writer actually has. */
+  const templateId = sanitised.patch.templateId;
+  if (templateId !== undefined && templateId !== null && !isBuiltinTemplateId(templateId) && !templates.get(templateId)) {
+    return fail(c, 400, 'Unknown template', 'That prompt template does not exist.');
+  }
 
   const updated = stories.update(id, sanitised.patch);
   return updated ? c.json<Story>(updated) : notFound(c, 'Story');

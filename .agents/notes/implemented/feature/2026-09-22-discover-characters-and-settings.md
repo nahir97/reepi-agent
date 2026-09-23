@@ -203,13 +203,13 @@ became a fact in this codebase rather than a layout to copy.
 
 ## Alternatives considered
 
-**Persist an active template on the story (`stories.template_id`, nullable FK, `ON DELETE SET NULL`).**
-Rejected for now, though it was the option that would let a chat *own* a prompt and re-apply after an
-edit. It costs a column, a migration, a hygiene test, a decorator on every story read, and a
-`templateId` write path — and it buys a fact that is already legible from the blocks, because applying
-is copying text and the text is right there. It also invites the failure this design is built to
-avoid: a stored reference that disagrees with the words. It is the one-edit path if re-application
-becomes a repeated need, and it is recorded here so that is a decision rather than a re-derivation.
+**Persist an active template on the story.** *Rejected here, then built the next day* — the full
+reasoning is in [a conversation owns its prompt](2026-09-22-a-conversation-owns-its-prompt.md), which
+is the note to read for the decision. The short version of why this note's rejection did not hold:
+"buying a fact already legible from the blocks" assumed the writer can read seven textareas and
+recognise a template's text in them, which is exactly what they told us they cannot do. The column
+that shipped is a plain validated id rather than the FK sketched above, because the code-shipped
+starters are constants and an FK rejects them.
 
 **Keeping the flat seven-row `StudioNav` and trusting the palette.** Rejected: seven rows in a
 directory list is a list nobody reads, and the palette is a way to *reach* things, not a way to learn
@@ -277,10 +277,10 @@ whose current position a writer has to notice.
 - **Message search is a filter, not a jump-to-result list.** With ten turns it is obviously right;
   with a thousand it would want a match list with positions. `Message.seq` and the scene filter are
   already there to build one, and the field is the seam it would attach to.
-- **`ui.appliedTemplate` now has no reader.** The rail's Prompt row was the only surface that displayed
-  it, so the record is written and never shown. Kept rather than deleted because "this chat speaks in
-  House voice" is a fact worth having a home for, and the wiring is three lines; if it is still unread
-  at the next pass over this panel it should go.
+- **`ui.appliedTemplate` had no reader and should be deleted.** It was kept here on the grounds that a
+  future surface might want to say "this chat speaks in House voice"; that surface arrived immediately
+  as `stories.template_id`, which is durable and therefore better, and the session-local record is now
+  dead state.
 - **The payload report moved from the rail to a dialog**, which trades one kind of friction for
   another. It is no longer visible while reading — deliberate — but it is also no longer reachable
   without the composer on screen, which is why Settings carries a `Payload report` row too.

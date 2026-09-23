@@ -82,9 +82,15 @@ export function templatesSlice({ get, set }: Slice): Pick<
     applyTemplate: async (template, only) => {
       const bundle = get().bundle;
       if (!bundle) return;
-      const patch: Partial<Story> = templateStoryPatch(template.blocks, only);
-      const fields = Object.keys(patch) as (keyof Story)[];
+      const patch: Partial<Story> = { ...templateStoryPatch(template.blocks, only) };
+      const fields = (Object.keys(patch) as (keyof Story)[]).filter((field) => field !== 'templateId');
       if (fields.length === 0) return;
+
+      /* The link rides with the text, in the same PATCH. Applying a whole template
+         makes this story speak that prompt; applying one *block* of it does not, so
+         a narrowed apply leaves the link alone rather than claiming a template half
+         of which is not in the payload. */
+      if (!only) patch.templateId = template.id;
 
       await get().updateStory(patch);
 
@@ -93,6 +99,7 @@ export function templatesSlice({ get, set }: Slice): Pick<
          action — a success toast over a failed write is worse than no toast. */
       const story = get().bundle?.story;
       if (!story || !fields.every((field) => story[field] === patch[field])) return;
+      if (!only && story.templateId !== template.id) return;
 
       /* Recorded *after* the read-back, so the rail's Prompt row only ever names a
          template whose text is really in the story. `only` narrows the copy, not
