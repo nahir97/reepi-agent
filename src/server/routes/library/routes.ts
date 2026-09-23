@@ -35,7 +35,7 @@ import {
   threads,
 } from '../../store/index.ts';
 import { isBuiltinTemplateId } from '../../templates.ts';
-import { chatsOfCharacter, removeStoryPreservingCast, startChat } from '../../chats.ts';
+import { chatsOfCharacter, ensureChatGreeting, removeStoryPreservingCast, startChat } from '../../chats.ts';
 import { param, reject } from './shared.ts';
 import {
   sanitiseCharacter,
@@ -278,13 +278,14 @@ mod.delete('/stories/:id/cast/:characterId', (c) => {
 });
 
 /**
- * Start the 1:1 chat with this character, or hand back the one that already
- * exists. One chat per character, so this is not "create" so much as "open
- * or create" — re-clicking a card must land in the conversation it started.
+ * Start a new 1:1 chat with this character.
  *
- * `fromStoryId` is only consulted for a card whose home story is gone, and must
- * name a story that casts it: the world a chat draws from has to be one the
- * writer can actually see the card in.
+ * A card may own many chats, so this always creates one — the shape is
+ * SillyTavern's. Resuming lands elsewhere: `stories.chatFor` returns the card's
+ * most recently written chat and the client opens that story. `fromStoryId` is only
+ * consulted for a card whose home story is gone, and must name a story that casts
+ * it: the world a chat draws from has to be one the writer can actually see the
+ * card in.
  */
 mod.post('/characters/:id/chat', async (c) => {
   const body = await readBody<StartChatBody>(c);
@@ -306,10 +307,26 @@ mod.post('/characters/:id/chat', async (c) => {
       'Its home story is gone, and this story does not cast it. Open a story that casts it and start the chat there.',
     );
   }
-  if (outcome.kind === 'exists') {
-    return fail(c, 409, 'This character already has a chat', outcome.story.title);
-  }
   return c.json<Story>(outcome.story);
+});
+
+/**
+ * Open a card chat that has never been written in.
+ *
+ * A greeting can be authored after the chat row exists, and the row then has no
+ * opening line — a blank page the writer cannot fix from the card editor. This
+ * fills a *genuinely empty* card chat with the card's opening line, once, the first
+ * time it is opened. Idempotent: a chat with any message is left untouched.
+ *
+ * A POST rather than a write hidden inside the bundle GET, because a read that
+ * mutates is the kind of thing a later maintainer re-derives wrongly. The client
+ * calls it only when it has loaded a card chat with no messages.
+ */
+mod.post('/stories/:id/greeting', (c) => {
+  const id = param(c, 'id');
+  if (!stories.get(id)) return notFound(c, 'Story');
+  const message = ensureChatGreeting(id);
+  return c.json<{ ok: true; message: Message | null }>({ ok: true, message });
 });
 
 mod.patch('/characters/:id', async (c) => {

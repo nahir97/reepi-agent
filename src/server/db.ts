@@ -365,11 +365,31 @@ const ADDITIVE_MIGRATIONS: { table: string; column: string; ddl: string }[] = [
  * unconditional, so a fresh file and an upgraded one end up identical.
  */
 const POST_MIGRATION_INDEXES = `
-CREATE UNIQUE INDEX IF NOT EXISTS stories_character_id
-  ON stories(character_id) WHERE character_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS characters_story ON characters(home_story_id, sort_order);
 CREATE INDEX IF NOT EXISTS story_cast_character ON story_cast(character_id);
 `;
+
+/**
+ * The v3 index that forced a character to have exactly one chat.
+ *
+ * v4 lets a card own many (SillyTavern's model), so the index has to go. A *drop*
+ * cannot be expressed in `ADDITIVE_MIGRATIONS`, and `CREATE UNIQUE INDEX IF NOT
+ * EXISTS` above would not remove an index an existing file already has — so it is
+ * detected and applied by hand. The sentinel name is pushed into `pending`, which
+ * is what makes `openDatabase` take its pre-migration snapshot: a dropped
+ * constraint is exactly the change that needs one.
+ */
+const LEGACY_ONE_CHAT_INDEX = 'stories.one_chat_per_character';
+
+function oneChatIndexExists(handle: DatabaseSync): boolean {
+  try {
+    const indexes = handle.prepare('PRAGMA index_list(stories)').all() as { name: string }[];
+    return indexes.some((index) => index.name === 'stories_character_id');
+  } catch {
+    /* The table may not exist yet on a fresh file. */
+    return false;
+  }
+}
 
 /**
  * v1 `characters.story_id` → v2 `characters.home_story_id`.
@@ -433,11 +453,18 @@ function pendingMigrations(handle: DatabaseSync): string[] {
     if (columns.some((column) => column.name === migration.column)) continue;
     pending.push(`${migration.table}.${migration.column}`);
   }
+  if (oneChatIndexExists(handle)) pending.push(LEGACY_ONE_CHAT_INDEX);
   return pending;
 }
 
 function migrate(handle: DatabaseSync, pending: readonly string[]): void {
   for (const name of pending) {
+    if (name === LEGACY_ONE_CHAT_INDEX) {
+      handle.exec('DROP INDEX IF EXISTS stories_character_id');
+      recordMigration(handle, name);
+      console.log('[reepi] dropped the one-chat-per-character index — a character may now have many chats');
+      continue;
+    }
     const [table, column] = name.split('.') as [string, string];
     const migration = ADDITIVE_MIGRATIONS.find(
       (candidate) => candidate.table === table && candidate.column === column,

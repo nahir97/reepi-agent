@@ -127,6 +127,7 @@ export function initialState(): Omit<
   | 'createCard'
   | 'startChatWith'
   | 'openChatWith'
+  | 'newChatWith'
   | 'loadCastLibrary'
   | 'refreshCastLibrary'
   | 'addToCast'

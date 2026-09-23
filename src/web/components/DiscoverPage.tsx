@@ -89,7 +89,15 @@ export function DiscoverPage() {
 
   /* ------------------------------------------------------------- resolution */
 
-  const chatOf = useMemo(() => new Map(chats.map((chat) => [chat.characterId ?? '', chat])), [chats]);
+  /* A card may own several chats; `chats` is newest-first, so the first one seen for
+     a character is the one its "Resume" opens. */
+  const chatOf = useMemo(() => {
+    const map = new Map<string, (typeof chats)[number]>();
+    for (const chat of chats) {
+      if (chat.characterId && !map.has(chat.characterId)) map.set(chat.characterId, chat);
+    }
+    return map;
+  }, [chats]);
   const castHere = useMemo(
     () => new Set((castLibrary?.casts ?? []).map((entry) => entry.characterId)),
     [castLibrary],
@@ -349,9 +357,9 @@ function CharacterCard({
   chat: { id: string } | null;
   castHere: Set<string>;
 }) {
-  const openStory = useStore((state) => state.openStory);
   const openDialog = useStore((state) => state.openDialog);
   const openChatWith = useStore((state) => state.openChatWith);
+  const newChatWith = useStore((state) => state.newChatWith);
   const tags = characterTags(character);
 
   /* The card outlived its home story and is cast nowhere, so there is no world
@@ -382,13 +390,8 @@ function CharacterCard({
          one place that can fix what is wrong with it — the cast control lives
          there. The empty callback is deliberate: the card must not claim a chat
          it cannot open, and the body must still do something. */
-      onOpen={
-        blocked
-          ? () => undefined
-          : chat
-            ? () => void openStory(chat.id)
-            : () => void openChatWith(character.id)
-      }
+      onOpen={blocked ? () => undefined : () => void openChatWith(character.id)}
+      onNewChat={blocked || !chat ? undefined : () => void newChatWith(character.id)}
       openLabel={chat ? 'Resume' : 'New chat'}
       openBlockedReason={
         blocked ? 'This card outlived its home story. Cast it into a story, then start the chat from there.' : undefined

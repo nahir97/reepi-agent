@@ -122,16 +122,34 @@ check('a chat borrows the home persona pool', chatBundle?.personas.length === 1 
 check('resolvePersona reads through the pool', chat ? resolvePersona(chat)?.id === per.id : false);
 check('a chat resolves its persona even with no rows of its own', chat ? personas.list(chat.id).length === 0 : false);
 
-const again = startChat(chr.id);
-check('one chat per character', again.kind === 'exists' && again.story.id === chat?.id);
+/* A card owns as many chats as the writer wants (SillyTavern's model), so a second
+   start is a second conversation — seeded from the same greeting, and titled so the
+   library can tell them apart. "Resume" is the most recently written one. */
+const secondChat = startChat(chr.id);
+check('a second start creates a second chat', secondChat.kind === 'created' && secondChat.story.id !== chat?.id);
+check('the second chat is titled apart from the first', secondChat.kind === 'created' && secondChat.story.title === 'Asper (2)');
+check('each chat seeds its own opening line', Boolean(
+  secondChat.kind === 'created' &&
+  messages.list(secondChat.story.id).length === 1 &&
+  messages.list(secondChat.story.id)[0]?.variants[0] === 'Well met, stranger.',
+));
+check('resuming a card lands in its most recent chat', stories.chatFor(chr.id)?.id === secondChat.story.id);
 
-let refusedSecondChat = false;
+let secondRow = false;
 try {
   stories.create({ title: 'Second thoughts', characterId: chr.id });
+  secondRow = true;
 } catch {
-  refusedSecondChat = true;
+  secondRow = false;
 }
-check('the unique index refuses a second chat', refusedSecondChat);
+check('a character may own several chat rows', secondRow);
+
+/* The v3 unique index is gone from a fresh file — and the migration drops it from
+   an existing one (pinned against a real file in the migration section). */
+const chatIndexes = (
+  getDb().prepare('PRAGMA index_list(stories)').all() as { name: string }[]
+).map((row) => row.name);
+check('nothing forces one chat per character', !chatIndexes.includes('stories_character_id'));
 
 const branched = chat ? recreateStoryBundle(loadStoryBundle(chat.id)!, { title: 'Asper (copy)' }) : null;
 check('duplicating a chat yields a standalone story', Boolean(
@@ -446,9 +464,11 @@ check('a story that casts it lends its world', adopted.kind === 'created' && ado
 check('the adopted conversation keeps the persona it started with', Boolean(
   adoptedChat && resolvePersona(adoptedChat)?.name === 'Host' && personas.list(adoptedChat.id).length === 1,
 ));
-check('an existing chat is handed back even without a world', (() => {
-  const again = startChat(survivor.id);
-  return again.kind === 'exists' && again.story.id === survivorChat?.id;
+check('a card with no world keeps its conversation', (() => {
+  /* There is no "open or create" any more: a card can own several chats, so a
+     click resumes through `chatFor` rather than through `startChat`. A card whose
+     world is gone must still resolve to the conversation it already has. */
+  return stories.chatFor(survivor.id)?.id === survivorChat?.id;
 })());
 
 // --- deleting a story still cascades its own children

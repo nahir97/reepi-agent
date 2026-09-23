@@ -32,17 +32,21 @@ import { greetingsOf } from '../shared/greetings.ts';
 import { transaction } from './db.ts';
 import { expandMacros, macroContextOf } from './macros.ts';
 import { cast, characters, lore, messages, personas, resolvePersona, scenes, stories } from './store/index.ts';
-import type { Character, Persona, Story } from '../shared/types.ts';
+import type { Character, Message, Persona, Story } from '../shared/types.ts';
 
 export type StartChatOutcome =
   | { kind: 'created'; story: Story }
-  | { kind: 'exists'; story: Story }
   | { kind: 'unknown-character' }
   /** The card has no home story left, and the caller named no story that casts it. */
   | { kind: 'orphan' };
 
 /**
- * Start a chat with a card.
+ * Start a **new** chat with a card.
+ *
+ * A card owns as many chats as the writer wants (SillyTavern's model), so this
+ * always creates one; resuming an existing conversation is `stories.chatFor`, which
+ * returns the most recently written. That is the whole split: a click resumes, a
+ * "New chat" creates, and neither has to guess what the other meant.
  *
  * The world it seeds from is the card's **home** story. A card whose home was
  * deleted is still chattable — it just needs a world, and `fromStoryId` supplies
@@ -63,24 +67,57 @@ export function startChat(
   const character = characters.get(characterId);
   if (!character) return { kind: 'unknown-character' };
 
-  /* An existing conversation is handed back whatever the state of the world it
-     was seeded from: the writer asked to open *that* chat, and a deleted home
-     story must not turn "open chat" into an error. */
-  const existing = stories.chatFor(characterId);
-  if (existing) return { kind: 'exists', story: existing };
-
   const source = sourceStoryFor(character, options.fromStoryId);
   if (!source) return { kind: 'orphan' };
 
   /* A card with no home has no pool to borrow, so its chat will own the persona
      it starts with. Everything below is synchronous on a single-threaded server,
-     so "check then insert" cannot interleave with another request; the unique
-     index is the belt to this braces. */
+     so "check then insert" cannot interleave with another request. */
   const ownsPersona = character.homeStoryId === null;
   return {
     kind: 'created',
     story: transaction(() => openChat(character, source, { ownsPersona, greeting: options.greeting })),
   };
+}
+
+/**
+ * Give a card chat its opening line, the first time an **empty** one is opened.
+ *
+ * A greeting is written at chat creation, but it can be authored (or edited) after
+ * the chat row exists — and before a card could own many chats, that was a dead
+ * end: the empty chat already existed, so "New chat" reopened it and the greeting
+ * could never arrive. This closes that gap by treating an empty card chat as one
+ * that has not opened yet.
+ *
+ * Deliberately narrow: only a card chat, only a transcript with no messages, and
+ * only ever the opening line (an existing chat was started before the writer could
+ * choose, so the alternate picker does not apply). Returns the message it wrote, or
+ * `null` when there was nothing to do.
+ */
+export function ensureChatGreeting(storyId: string): Message | null {
+  const chat = stories.get(storyId);
+  if (!chat || !chat.characterId) return null;
+  if (messages.list(storyId).length > 0) return null;
+
+  const character = characters.get(chat.characterId);
+  if (!character) return null;
+  const greeting = greetingsOf(character)[0];
+  if (!greeting) return null;
+
+  return transaction(() => {
+    const scene = scenes.list(storyId)[0] ?? scenes.create(storyId, { title: 'Opening' });
+    /* Macros expand once, against this chat's own persona, exactly as they do when
+       the line is written at creation. */
+    const rendered = expandMacros(greeting, macroContextOf(chat, scene, [])).text;
+    return messages.create({
+      storyId,
+      sceneId: scene.id,
+      role: 'assistant',
+      origin: 'greeting',
+      speaker: character.name,
+      variants: [rendered],
+    });
+  });
 }
 
 /** The story a chat draws its world and persona pool from, or `null` if there is none. */
@@ -99,8 +136,13 @@ function openChat(
   source: Story,
   options: { ownsPersona: boolean; greeting?: number },
 ): Story {
+  /* A card can own several chats, so the library list needs to tell them apart:
+     the first keeps the card's own name, and later ones are numbered. Cosmetic, and
+     a number can be reused after a delete — titles are not identity. */
+  const name = character.name.trim() || 'Chat';
+  const owned = stories.chatsFor(character.id).length;
   const chat = stories.create({
-    title: character.name.trim() || 'Chat',
+    title: owned === 0 ? name : `${name} (${owned + 1})`,
     characterId: character.id,
 
     /* The world. */

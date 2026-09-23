@@ -22,7 +22,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { formatTokens } from '../../shared/cost.ts';
 import type { Character } from '../../shared/types.ts';
 import { Avatar } from './Avatar.tsx';
-import { IconPen, IconUsers } from './icons.tsx';
+import { IconPen, IconPlus, IconUsers } from './icons.tsx';
 
 /**
  * The card's own tags, read out of the freeform `meta` blob.
@@ -59,6 +59,12 @@ export type RosterCardProps = {
   chips?: ReactNode;
   /** Non-null makes the card's body open a conversation instead of the editor. */
   onOpen: (() => void) | null;
+  /**
+   * A second start gesture, shown only when `onOpen` would *resume*: start a fresh
+   * conversation even though one already exists. A card owns many chats, so
+   * "the one I was in" and "a new one" are two different verbs.
+   */
+  onNewChat?: () => void;
   onEdit: () => void;
   /** A single trailing footer action: `Add to story`, `Remove`, `New chat`… */
   action?: ReactNode;
@@ -78,6 +84,7 @@ export function RosterCard({
   badges,
   chips,
   onOpen,
+  onNewChat,
   onEdit,
   action,
   openLabel = 'Chat',
@@ -169,6 +176,19 @@ export function RosterCard({
             <OpenIcon size={11} />
             {openLabel}
           </button>
+          {onNewChat ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ padding: '0.25rem 0.5rem' }}
+              onClick={onNewChat}
+              title={`Start a new chat with ${name}`}
+              aria-label={`Start a new chat with ${name}`}
+            >
+              <IconPlus size={11} />
+              New
+            </button>
+          ) : null}
           <button
             type="button"
             className="icon-btn shrink-0 opacity-60 transition-opacity hover:opacity-100"

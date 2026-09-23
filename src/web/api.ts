@@ -242,6 +242,16 @@ export const api = {
       send<Story>('/api/stories', json('POST', body, signal)),
     bundle: (storyId: string, signal?: AbortSignal) =>
       send<StoryBundle>(`/api/stories/${enc(storyId)}/bundle`, json('GET', undefined, signal)),
+    /**
+     * Give an empty card chat its card's opening line. Idempotent, and only ever
+     * writes when the transcript has no messages — the repair path for a greeting
+     * authored after its chat row existed.
+     */
+    seedGreeting: (storyId: string, signal?: AbortSignal) =>
+      send<{ ok: true; message: Message | null }>(
+        `/api/stories/${enc(storyId)}/greeting`,
+        json('POST', {}, signal),
+      ),
     update: (storyId: string, patch: Partial<Story>, signal?: AbortSignal) =>
       send<Story>(`/api/stories/${enc(storyId)}`, json('PATCH', patch, signal)),
     remove: (storyId: string, signal?: AbortSignal) =>

@@ -241,9 +241,10 @@ click away and none of it is on the default screen.
   transcript and narrows the turns — speaker names and every candidate generation — reporting how many
   of how many, and clearing itself when you open another conversation. Client-side: no index, no route,
   and nothing cached is disturbed.
-- **Click a character and you are talking to them.** A card's face opens a 1:1 chat — created
-  on first use, reopened after that — and that chat is a real conversation: one borrowed card,
-  its own transcript, its own cache prefix and cost. It inherits the story's world (contract,
+- **Click a character and you are talking to them.** A card's face opens a 1:1 chat: a click
+  resumes the conversation you last wrote in, and `New` starts a fresh one, so a card owns as many
+  as you want. A chat is a real conversation — one borrowed card, its own transcript, its own
+  cache prefix and cost. It inherits the story's world (contract,
   genre, style, bible, scenario and anchored lore) and none of its turns, and it opens on a
   greeting you choose when you start it. A card carries an opening line and any number of
   alternates — authored in the card editor, or imported from a SillyTavern card — and the one you

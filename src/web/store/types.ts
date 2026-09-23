@@ -326,15 +326,21 @@ export type Store = {
   startChatWith: (characterId: string, fromStoryId?: string, greeting?: number) => Promise<void>;
 
   /**
-   * The card's own start gesture: open its chat, or work out how to start it.
-   *
-   * A card with a single opening line starts in one click, exactly as before. A
-   * card with alternates asks which one first (`new-chat` dialog), because the
-   * choice is only free at the moment the transcript is seeded and a card has one
-   * chat. Callers pass the card's id and, for a home-less card, the story lending
-   * its world; this action finds the card itself.
+   * The card's own click: resume its most recently written chat, or start one when
+   * it has none. A card may own several chats, so this is "the one you last wrote
+   * in", not "its only one".
    */
   openChatWith: (characterId: string, fromStoryId?: string) => Promise<void>;
+
+  /**
+   * Start a fresh chat with a card, always creating one.
+   *
+   * The gesture a card with an existing conversation needs and cannot get from a
+   * click that resumes. A card with a single opening line starts immediately; one
+   * that offers alternates asks which first (the `new-chat` dialog), because the
+   * choice is only free at the moment the transcript is seeded.
+   */
+  newChatWith: (characterId: string, fromStoryId?: string) => Promise<void>;
 
   /** Read the whole character library. */
   loadCastLibrary: () => Promise<void>;

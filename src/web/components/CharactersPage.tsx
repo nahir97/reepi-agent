@@ -65,8 +65,8 @@ export function CharactersPage() {
   const castLibraryError = useStore((state) => state.castLibraryError);
   const loadCastLibrary = useStore((state) => state.loadCastLibrary);
   const setPage = useStore((state) => state.setPage);
-  const openStory = useStore((state) => state.openStory);
   const openChatWith = useStore((state) => state.openChatWith);
+  const newChatWith = useStore((state) => state.newChatWith);
   const addToCast = useStore((state) => state.addToCast);
   const removeFromCast = useStore((state) => state.removeFromCast);
   const createCard = useStore((state) => state.createCard);
@@ -99,7 +99,15 @@ export function CharactersPage() {
     return ids;
   }, [stories, storyId]);
 
-  const chats = useMemo(() => new Map(stories.filter((s) => s.characterId).map((s) => [s.characterId ?? '', s])), [stories]);
+  /* Newest first in `stories`, so the first chat seen for a card is the one to
+     resume — a later (older) one must not replace it. */
+  const chats = useMemo(() => {
+    const map = new Map<string, Story>();
+    for (const story of stories) {
+      if (story.characterId && !map.has(story.characterId)) map.set(story.characterId, story);
+    }
+    return map;
+  }, [stories]);
 
   const castCount = useMemo(() => {
     const counts = new Map<string, number>();
@@ -327,7 +335,8 @@ export function CharactersPage() {
                           storyTitle={bundle?.story.title ?? ''}
                           canCast={canCast}
                           inChat={isChat}
-                          onOpen={() => (entry.chat ? void openStory(entry.chat.id) : void openChatWith(entry.id))}
+                          onOpen={() => void openChatWith(entry.id)}
+                          onNewChat={() => void newChatWith(entry.id)}
                           onEdit={() => openDialog({ kind: 'card', card: 'character', id: entry.id })}
                           onAdd={() => void addToCast(entry.id)}
                           onRemove={() => void removeFromCast(entry.id)}
@@ -402,6 +411,7 @@ function CharacterEntry({
   canCast,
   inChat,
   onOpen,
+  onNewChat,
   onEdit,
   onAdd,
   onRemove,
@@ -411,6 +421,7 @@ function CharacterEntry({
   canCast: boolean;
   inChat: boolean;
   onOpen: () => void;
+  onNewChat: () => void;
   onEdit: () => void;
   onAdd: () => void;
   onRemove: () => void;
@@ -441,6 +452,7 @@ function CharacterEntry({
       chips={entry.chat ? <span className="chip">in a chat</span> : null}
       onEdit={onEdit}
       onOpen={inChat ? null : blocked ? null : onOpen}
+      onNewChat={entry.chat && !inChat && !blocked ? onNewChat : undefined}
       openLabel={entry.chat ? 'Open chat' : 'Chat'}
       openBlockedReason={
         blocked ? 'This card outlived its home story. Cast it into a story, then start the chat from there.' : undefined

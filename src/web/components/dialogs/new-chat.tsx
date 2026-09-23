@@ -8,12 +8,8 @@
  * for a character had to apply it blind, one screen away from the conversation it
  * was for.
  *
- * Three decisions shape what this dialog *is*:
+ * Two decisions shape what this dialog *is*:
  *
- * - **It refuses to run when a chat already exists.** A card has at most one
- *   conversation (`stories.character_id` is unique), so `startChatWith` would open
- *   the existing one — and a "new chat" picker over an existing chat is a lie about
- *   what the button does. The dialog closes and opens the conversation instead.
  * - **The greeting is chosen before the chat exists.** A card may carry several
  *   openings — its `first_mes` plus any alternate greetings — and the chosen index
  *   is handed to `startChatWith`, which seeds exactly one into the new transcript.
@@ -23,6 +19,10 @@
  *   created by `startChatWith`, then the chosen template is copied by
  *   `applyTemplate` — the same action the rail's Prompt section uses. One write
  *   path, one meaning of "apply".
+ *
+ * It is only ever a *creation* dialog: a card owns many chats, and resuming one is
+ * `openChatWith`'s job, so this is never shown over a conversation that already
+ * exists.
  *
  * The consequence of that ordering is stated where it can happen: if the chat is
  * created and the template write then fails, **the chat stays**. Rolling it back
@@ -41,7 +41,6 @@ import { Shell } from './shell.tsx';
 
 export function NewChatDialog({ characterId, fromStoryId }: { characterId: string; fromStoryId?: string }) {
   const bundle = useStore((state) => state.bundle);
-  const stories = useStore((state) => state.stories);
   const castLibrary = useStore((state) => state.castLibrary);
   const templates = useStore((state) => state.promptTemplates);
   const startChatWith = useStore((state) => state.startChatWith);
@@ -61,7 +60,6 @@ export function NewChatDialog({ characterId, fromStoryId }: { characterId: strin
     bundle?.characters.find((character) => character.id === characterId) ??
     null;
 
-  const existing = stories.find((story) => story.characterId === characterId) ?? null;
   const chosen = templates.find((template) => template.id === templateId) ?? null;
 
   const close = (): void => openDialog(null);
@@ -71,26 +69,6 @@ export function NewChatDialog({ characterId, fromStoryId }: { characterId: strin
       <Shell title="New chat" onClose={close}>
         <p className="text-[12.5px] text-faint">
           That card is not in the library any more, so there is nothing to talk to.
-        </p>
-      </Shell>
-    );
-  }
-
-  /* One conversation per character, so the honest thing is to open it. */
-  if (existing) {
-    return (
-      <Shell
-        title={`Chat with ${card.name}`}
-        subtitle="You already have a conversation with this card — a card has one, so this is it."
-        onClose={close}
-        footer={
-          <button type="button" className="btn btn-primary" onClick={close}>
-            Close
-          </button>
-        }
-      >
-        <p className="text-[12.5px] leading-snug text-dim">
-          Open “{existing.title}” to keep writing, or apply a prompt to it from the Prompt section of the story panel.
         </p>
       </Shell>
     );

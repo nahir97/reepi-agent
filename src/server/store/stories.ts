@@ -136,12 +136,27 @@ export const stories = {
     return merged;
   },
 
-  /** The chat started from this card, if the writer has one. At most one exists. */
+  /**
+   * The chat to resume for this card: the most recently written one.
+   *
+   * A card may own many chats (SillyTavern's model), so "open this character" has
+   * to mean *a* conversation rather than *the* conversation. The most recent is the
+   * one the writer last wrote in, which is the one a click should land in; starting
+   * a fresh one is a separate gesture (`startChat` always creates).
+   */
   chatFor(characterId: string): Story | null {
-    const row = getDb().prepare('SELECT * FROM stories WHERE character_id = ?').get(characterId) as
-      | Row
-      | undefined;
+    const row = getDb()
+      .prepare('SELECT * FROM stories WHERE character_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1')
+      .get(characterId) as Row | undefined;
     return row ? toStory(row) : null;
+  },
+
+  /** Every chat a card owns, newest first. */
+  chatsFor(characterId: string): Story[] {
+    const rows = getDb()
+      .prepare('SELECT * FROM stories WHERE character_id = ? ORDER BY updated_at DESC, created_at DESC')
+      .all(characterId) as Row[];
+    return rows.map(toStory);
   },
 
   /** Chats started from any of these cards. Used to report a cascade before it runs. */

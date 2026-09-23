@@ -112,7 +112,13 @@ function entriesOf(
   chats: Story[],
   context: CastContext,
 ): RosterEntry[] {
-  const chatOf = new Map(chats.map((chat) => [chat.characterId ?? '', chat]));
+  /* A card may own several chats. `chats` arrives newest-first (`updated_at DESC`),
+     and the first one seen for a card is the conversation its "Open chat" resumes;
+     an older one must not replace it. */
+  const chatOf = new Map<string, Story>();
+  for (const chat of chats) {
+    if (chat.characterId && !chatOf.has(chat.characterId)) chatOf.set(chat.characterId, chat);
+  }
   return [
     ...characters.map(
       (character): RosterEntry => ({
@@ -165,6 +171,7 @@ export function CastPage() {
   const setPage = useStore((state) => state.setPage);
   const createCard = useStore((state) => state.createCard);
   const openChatWith = useStore((state) => state.openChatWith);
+  const newChatWith = useStore((state) => state.newChatWith);
   const addToCast = useStore((state) => state.addToCast);
   const removeFromCast = useStore((state) => state.removeFromCast);
   const loadCastLibrary = useStore((state) => state.loadCastLibrary);
@@ -520,6 +527,14 @@ export function CastPage() {
                           entry.kind === 'character' && !isChat
                             ? () => void openChatWith(entry.id, chatSourceFor(entry, storyId))
                             : null
+                        }
+                        /* A card that already has a conversation can still start a
+                           fresh one — a card owns many chats, and "resume the last"
+                           and "begin a new one" are two different verbs. */
+                        onNewChat={
+                          entry.kind === 'character' && !isChat && entry.chat
+                            ? () => void newChatWith(entry.id, chatSourceFor(entry, storyId))
+                            : undefined
                         }
                         openLabel={entry.chat ? 'Open chat' : 'Chat'}
                         openBlockedReason={

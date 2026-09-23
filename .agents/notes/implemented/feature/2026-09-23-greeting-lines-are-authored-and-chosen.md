@@ -96,9 +96,16 @@ common case — one greeting, or none — is friction for a choice that does not
   the editor rather than discovered. It is the one authored line that becomes transcript instead
   of cast block, so it cannot re-price anything that already exists — and a chat that has already
   started keeps the line it opened on.
-- **One chat per character means the greeting list is consulted once per card.** After that, the
-  opening line is edited in the transcript like any other turn; the card's greetings only matter
-  for a chat that does not exist yet.
+- **A card owns many chats, so the greeting list is consulted once per *chat*.**
+  ([a character owns many chats](2026-09-23-a-character-owns-many-chats.md) replaced the
+  one-chat-per-character rule this note was written under.) Every new chat is seeded afresh, and
+  the picker is offered each time; a conversation that already has turns keeps the line it opened
+  on, and its opening line is edited in the transcript like any other turn.
+- **An empty card chat is healed on open.** `POST /stories/:id/greeting` writes the card's opening
+  line into a card chat whose transcript has no messages, and the client calls it when it opens
+  one. This is what makes a greeting authored *after* its chat row existed finally reach that
+  chat — before many-chats, such a chat could never show it, because "New chat" reopened the same
+  empty row. Idempotent, and narrow: a card chat, an empty transcript, the opening line only.
 - **`meta` merge is now part of `characters.update`'s contract**: a patch changes keys and cannot
   remove one. Nothing in the app deletes a `meta` key, and import writes the whole blob, so the
   contract is safe — but a future writer that wants to clear a key must send an empty value, not

@@ -22,7 +22,7 @@ import type { Story, Scene, Theme } from '../../../shared/types.ts';
 import type { StoryTemplateId } from '../../../shared/api.ts';
 export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setTheme' | 'setStoryTheme' | 'loadStories' | 'loadStoryStats' | 'openStory' | 'refreshBundle' |
   'createStory' | 'duplicateStory' | 'archiveStory' | 'updateStory' | 'createScene' | 'switchScene' |
-  'updateScene' | 'archiveScene' | 'createCard' | 'startChatWith' | 'openChatWith' | 'loadCastLibrary' | 'refreshCastLibrary' |
+  'updateScene' | 'archiveScene' | 'createCard' | 'startChatWith' | 'openChatWith' | 'newChatWith' | 'loadCastLibrary' | 'refreshCastLibrary' |
   'addToCast' | 'removeFromCast' | 'setRightTab' | 'setRailOpen' | 'setAppliedTemplate' | 'setPage' |
   'setMessageFilter' | 'setMessageSearchOpen' | 'setDrawer' |
   'openDialog' | 'setPalette' | 'toast' | 'dismissToast' | 'fail'> {
@@ -128,15 +128,24 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       });
       try {
         const bundle = await api.stories.bundle(storyId);
+        /* A card chat that has never been written in gets its opening line now, so a
+           greeting authored *after* the chat row existed can still open the
+           conversation. One extra request, only for an empty card chat; the server
+           no-ops unless the transcript is genuinely empty and the card has a line. */
+        const seeded =
+          bundle.story.characterId && bundle.messages.length === 0
+            ? await api.stories.seedGreeting(storyId).catch(() => null)
+            : null;
+        const opened = seeded?.message ? await api.stories.bundle(storyId) : bundle;
         bumpStreamSeq();
-        const firstScene = bundle.scenes.find((scene) => !scene.archived) ?? bundle.scenes[0] ?? null;
+        const firstScene = opened.scenes.find((scene) => !scene.archived) ?? opened.scenes[0] ?? null;
         set({
-          bundle,
+          bundle: opened,
           loadingBundle: false,
           streaming: { ...IDLE_STREAM },
           activeSceneId: firstScene?.id ?? null,
         });
-        if (bundle.story.theme !== get().theme) get().setTheme(bundle.story.theme);
+        if (opened.story.theme !== get().theme) get().setTheme(opened.story.theme);
         /* Opening a story is the one gesture that always means "write here", so it
            leaves whatever page was covering the transcript — and it clears the
            message filter, because a search for someone else's words must not
@@ -378,21 +387,15 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
     },
 
     /**
-     * Open a card's 1:1 chat, starting it the first time.
+     * Create a **new** 1:1 chat with a card, and open it. Always creates.
      *
-     * The lookup is against `stories`, not a dedicated field, because a chat is
-     * just a story with `characterId` set — so "does this card have a chat" is a
-     * question the library already answers. `page` is cleared explicitly: a chat
-     * is opened *from* the cast page, and `openStory` deliberately does not move
-     * the centre column on its own.
+     * A card owns as many chats as the writer wants, so this cannot be "open or
+     * create" any more: resuming is `openChatWith`, and the two gestures are
+     * deliberately distinct. `page` is cleared explicitly by `openStory` — a chat is
+     * opened *from* the cast page, and `openStory` moves the centre column because
+     * it is the one gesture that always means "write here".
      */
     startChatWith: async (characterId, fromStoryId, greeting) => {
-      const existing = get().stories.find((story) => story.characterId === characterId);
-      if (existing) {
-        await get().openStory(existing.id);
-        return;
-      }
-
       try {
         const chat = await api.characters.startChat(characterId, fromStoryId, greeting);
         set({ stories: [chat, ...get().stories] });
@@ -400,22 +403,12 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
         get().toast({ kind: 'ok', title: 'Chat open', detail: chat.title });
         void get().loadStoryStats();
       } catch (error) {
-        /* A 409 means the chat exists after all — another tab, or a double click
-         * that got past the lookup above. Re-read the library and open the real
-         * one rather than showing a failure for a request that succeeded. */
-        await get().loadStories().catch(() => undefined);
-        const chat = get().stories.find((story) => story.characterId === characterId);
-        if (chat) {
-          await get().openStory(chat.id);
-          return;
-        }
         get().fail(error, 'Could not start the chat');
       }
     },
 
     /**
-     * The card's own start gesture: one click for a card with one opening line,
-     * a choice when it has several.
+     * Start a chat, asking which opening first when the card offers a choice.
      *
      * The card is looked up rather than passed because the three rosters that own
      * this gesture hold different shapes — a full card on Discover, a joined entry
@@ -424,13 +417,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
      * ordinary start: seeding the opening line is always a legitimate answer, and a
      * picker over nothing would not be.
      */
-    openChatWith: async (characterId, fromStoryId) => {
-      const existing = get().stories.find((story) => story.characterId === characterId);
-      if (existing) {
-        await get().openStory(existing.id);
-        return;
-      }
-
+    newChatWith: async (characterId, fromStoryId) => {
       const card =
         get().castLibrary?.characters.find((candidate) => candidate.id === characterId) ??
         get().bundle?.characters.find((candidate) => candidate.id === characterId) ??
@@ -442,6 +429,26 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       }
 
       await get().startChatWith(characterId, fromStoryId);
+    },
+
+    /**
+     * The card's own click: resume its most recently written chat, or start one if
+     * it has none.
+     *
+     * The lookup is against `stories`, not a dedicated field, because a chat is just
+     * a story with `characterId` set — so "which chat is this card's" is a question
+     * the library already answers. A card may own several, and the newest is the one
+     * the writer last wrote in, which is where a click should land.
+     */
+    openChatWith: async (characterId, fromStoryId) => {
+      const latest = get()
+        .stories.filter((story) => story.characterId === characterId)
+        .sort((a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt)[0];
+      if (latest) {
+        await get().openStory(latest.id);
+        return;
+      }
+      await get().newChatWith(characterId, fromStoryId);
     },
 
     setRightTab: (rightTab) => set({ ui: { ...get().ui, rightTab } }),

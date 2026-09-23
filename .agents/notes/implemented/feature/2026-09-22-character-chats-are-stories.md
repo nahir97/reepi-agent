@@ -41,9 +41,11 @@ is the whole link, and everything else about a chat is borrowed or derived:
   Turns, memories, threads, notes and synopsis do not come along;
   `instruct` does not either, because it is a directive about the turn being written rather
   than a fact about the world.
-- **One chat per character**, enforced twice: `startChat` hands back the existing chat instead
-  of creating a second, and a partial unique index (`stories_character_id … WHERE character_id
-  IS NOT NULL`) makes a second row impossible even under a race.
+- **A card owns as many chats as the writer wants** — see
+  [a character owns many chats](2026-09-23-a-character-owns-many-chats.md), which replaces the
+  "one chat per character" rule this note shipped with. `startChat` always creates, and
+  `chatFor` returns the most recently written chat. Everything else here — a chat *is* a story,
+  one borrowed card, a borrowed persona pool — still stands.
 - **`ON DELETE CASCADE` on the card, deliberately.** `character_id` is a real foreign key, so
   deleting the *card* deletes the chat and its children, and the delete response names the
   conversation before the writer agrees. Deleting the *story* no longer does: its cards survive
@@ -70,9 +72,10 @@ invisible to the composer that resolves the cast.
 
 ## Verification
 
-- `npm run verify:store` — **121/121**, including the chat cases: a chat borrows exactly one
+- `npm run verify:store` — **185/185**, including the chat cases: a chat borrows exactly one
   card, borrows the home persona pool while owning no persona rows, seeds the greeting,
-  copies anchored lore only, refuses a second chat through the unique index, and — since
+  copies anchored lore only, starts a second chat on request
+  ([a character owns many chats](2026-09-23-a-character-owns-many-chats.md)), and — since
   [the cast is a library](2026-09-22-cast-is-a-library.md) — survives the deletion of the story
   it was seeded from with its transcript and its persona frozen in.
 - `npm run verify:tx` — unchanged and passing; chat creation is a multi-row transaction.
@@ -131,11 +134,11 @@ whose `character_id` is set, and every reader that needs to distinguish them can
 itself: a conversation is not a thing you close. A chat is a place you are in, with its own
 transcript, so it is a story in the centre column.
 
-**Many chats per character (a chat list per card).** Deferred. It is one index away — drop
-`stories_character_id` (in the migration list, not just the DDL), let `startChat` always create,
-and give the cast card a chat list instead of `Open chat` — but the request was "its own chat",
-and a card whose click opens *which* chat is a question the current UI has no good answer for.
-Recorded here so the next reader does not have to re-derive the reversal.
+**Many chats per character (a chat list per card).** Deferred here, then built:
+[a character owns many chats](2026-09-23-a-character-owns-many-chats.md) drops
+`stories_character_id`, lets `startChat` always create, and answers "which chat does a click
+open" with the most recently written one — the card keeps `Resume`, and `New` starts a fresh
+conversation. Kept for the reasoning that made the deferral look right at the time.
 
 **Putting `characterId` in the story patch sanitiser.** Rejected: the reference is set once by
 the one write path that can validate a card id (`startChat`), and a client that could re-point a
