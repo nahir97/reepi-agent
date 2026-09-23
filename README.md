@@ -296,12 +296,13 @@ click away and none of it is on the default screen.
   `Story default — DeepSeek V4 Pro` — instead of leaving the writer to guess what "story default"
   means, and it carries the prompt picker, because "change the model" and "change the voice" are one
   decision made in one place.
-- **One cost pill** in the composer — live predicted hit rate, the price of the
-  turn, and what the cache took off it. Tapping it opens the **payload report** as a
-  dialog: every block in the order the provider sees, its token share, volatility
-  class, whether it moved since the last turn, and its exact rendered text. The
-  control that measures the request is the control that explains it, and the report
-  stays out of the rail while you read.
+- **The payload report is a dialog, not a fixture.** Settings → **Payload report** opens every
+  block in the order the provider sees it — its token share, volatility class, whether it moved
+  since the last turn, and its exact rendered text. The composer used to carry a live cost pill
+  whose tap opened this; the pill is gone, because the next turn's predicted hit rate and price
+  cannot be acted on mid-sentence and the numbers are already where they are read — the actuals
+  in each turn's **Turn details**, the prediction here. What sits beside the input is the speaker
+  and the one **cache-safety sentence**: which block the last edit broke, in tokens.
 - **A foldable turn-details disclosure** per message: hit rate, hit/miss tokens,
   output, cost, saved-vs-cold, time-to-first-token, whether it was billed at peak,
   and which lore entries were injected.
@@ -540,10 +541,10 @@ src/
       Transcript.tsx     the chat feed, scroll-stick policy, streaming states
       MessageBubble.tsx  avatar + name + bubble, aligned per speaker
       MessageActions.tsx swipe/regenerate/edit/pin/exclude/branch/attribute
-      Composer.tsx       writing surface, the compact cost pill, and who you are writing as
+      Composer.tsx       writing surface, the cache-safety sentence, and who you are writing as
       PersonaSwitch.tsx  the composer's persona chip: who the model reads as you, switchable
       MacroPicker.tsx    the macro reference (live values) and the insert-a-token control
-      CacheMeter.tsx     the pill, and the full payload meter behind it
+      cache-safety.ts    what the last edit did to the prefix, in one sentence
       PromptPicker.tsx   which prompt a conversation speaks in, and the one action that changes it
       Inspector.tsx      rail chrome: the band, the menu, the open section
       inspector/         one module per section: cast, persona, lore, memory, scene, director, the

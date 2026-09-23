@@ -38,8 +38,11 @@ Concretely:
 - **Per-turn instrumentation folds behind a `Turn details` disclosure** carrying hit rate,
   hit/miss tokens, output, cost, saved-vs-cold, time-to-first-token, billing period and the
   lore entries injected. All of it is retained; none is shown by default.
-- **The composer's meter is one pill** — predicted hit rate, this turn's cost, and the saving.
-  Tapping it opens the full payload analysis.
+- **The composer's meter is gone.** This note originally shipped it as one pill — predicted hit
+  rate, this turn's cost, and the saving, tapping it for the full payload analysis — and
+  [no cost pill on the writing surface](2026-09-23-no-cost-pill-on-the-writing-surface.md)
+  supersedes that bullet. The composer now carries only the persona chip and the cache-safety
+  sentence; the payload report is reached from Settings.
 - **The inspector rail collapses to a slim button** on wide screens, and the preference is
   remembered.
 - **Two theme pickers became four swatches in one row.** A story's own theme moved into its
@@ -53,8 +56,7 @@ qualifies, which is the point.
 
 Verified against the running application at nine viewport widths from 320px to 1920px: zero
 horizontal overflow at every width, and zero console errors. A real streamed turn was sent
-through the composer and its cost pill observed updating (46% → 75% cached as the transcript
-grew), with the turn details disclosure opened and read.
+through the composer and its usage read back from the turn details disclosure.
 
 The folded instrumentation is genuinely present, not removed — checked by opening the
 disclosure and reading the API's own usage figures from it.
@@ -88,8 +90,10 @@ scene legible at a glance, which is what roleplay with a cast requires.
 - **Discoverability cost.** Instrumentation that is hidden is instrumentation a new writer may
   never find. Mitigated by keeping the folded summary visible as a one-line affordance, and by
   the command palette listing the cost panel explicitly.
-- **Two clicks to the payload.** Reading the full block analysis now costs a click on the pill.
-  Accepted: that analysis is worth reading deliberately and not worth reading while writing.
+- **Two taps to the payload.** Reading the full block analysis means Settings → Payload report
+  ([no cost pill on the writing surface](2026-09-23-no-cost-pill-on-the-writing-surface.md)
+  removed the composer's one-click pill). Accepted: that analysis is worth reading deliberately
+  and not worth reading while writing.
 - **The chat metaphor is a constraint.** Bubbles cap useful width, so a very long turn reads
   in a narrower column than the manuscript layout allowed. Accepted as the trade for a
   conversation that reads as one.

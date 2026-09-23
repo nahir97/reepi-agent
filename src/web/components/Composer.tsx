@@ -1,15 +1,19 @@
 /**
  * The writing surface.
  *
- * Three things live here that matter more than the textarea:
+ * Two things live here that matter more than the textarea:
  *
- * 1. **The cache-safety indicator.** Above the buttons, it names the single block
- *    that broke the prefix and quantifies the damage in tokens.
- * 2. **The live meter**, fed by a debounced dry-run POST. It measures the payload
- *    the *next* turn would send, so it is honest while the composer is still
- *    empty.
- * 3. **The overrides popover.** Model, effort, sampling, budgets — per turn only,
+ * 1. **The cache-safety sentence.** Above the input, it names the single block an
+ *    edit broke and quantifies the damage in tokens — the one cache fact that is
+ *    actionable *while writing*, because it is about the words just changed.
+ * 2. **The overrides popover.** Model, effort, sampling, budgets — per turn only,
  *    because changing them permanently is exactly what breaks a prefix.
+ *
+ * What is deliberately *not* here is the cost pill. The next turn's predicted hit
+ * rate, price and saving used to sit in this row, and every one of them is already
+ * in `Turn details` (what the last turn actually cost) and in Settings → Payload
+ * report (the block-by-block plan). A figure you cannot act on mid-sentence is a
+ * figure that only takes pixels from the prose.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -17,7 +21,7 @@ import { countWords } from '../../shared/tokens.ts';
 import { EFFORT_LABELS, MODELS } from '../../shared/types.ts';
 import type { ChatRequest, ModelId, ReasoningEffort } from '../../shared/types.ts';
 import { useStore } from '../store.ts';
-import { CachePill, cacheSafetySentence } from './CacheMeter.tsx';
+import { cacheSafetySentence } from './cache-safety.ts';
 import { PersonaSwitch } from './PersonaSwitch.tsx';
 import { PromptPicker } from './PromptPicker.tsx';
 import { IconAlert, IconClose, IconFeather, IconNote, IconSend, IconSettings, IconStop } from './icons.tsx';
@@ -28,14 +32,11 @@ export function Composer() {
   const bundle = useStore((state) => state.bundle);
   const activeScene = useStore((state) => state.activeScene);
   const plan = useStore((state) => state.plan);
-  const planBusy = useStore((state) => state.planBusy);
-  const refreshPlan = useStore((state) => state.refreshPlan);
   const schedulePlan = useStore((state) => state.schedulePlan);
   const streaming = useStore((state) => state.streaming);
   const runTurn = useStore((state) => state.runTurn);
   const abort = useStore((state) => state.abort);
   const toast = useStore((state) => state.toast);
-  const openDialog = useStore((state) => state.openDialog);
 
   const [text, setText] = useState('');
   const [authorNote, setAuthorNote] = useState('');
@@ -143,18 +144,13 @@ export function Composer() {
           the prose's edge are one line. They were 48rem against 52rem, which put
           the writing surface 16px inside the text it was writing. */}
       <div className="mx-auto w-full max-w-[52rem] px-3 pt-2.5 pb-3 sm:px-6">
-        {/* One pill. The payload analysis is real and worth having, but it is not
-            worth reading while you are mid-sentence — so it opens on demand. The
-            persona beside it is the exception the rule allows: it is the speaker
-            of the turn being written, not a figure about the request. The row
-            wraps rather than squeezes: on a 320px phone the persona chip would
+        {/* The speaker, and the one sentence about the cache that is worth
+            reading while writing: what the last edit did to the prefix. There
+            used to be a cost pill here too; its numbers live in Turn details and
+            the payload report, where they are read deliberately. The row wraps
+            rather than squeezes: on a 320px phone the persona chip would
             otherwise be compressed under its own label. */}
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          {/* The pill is the summary and the way in: tapping it opens the full
-              block analysis, which is the same breakdown the story panel used to
-              carry. The control that measures the payload is the control that
-              explains it. */}
-          <CachePill plan={plan} busy={planBusy} onOpen={() => openDialog({ kind: 'payload' })} />
           <PersonaSwitch />
           {safety ? (
             <span
@@ -168,7 +164,7 @@ export function Composer() {
           ) : null}
         </div>
 
-        {/* The cache-safety sentence on a phone, where the pill cannot carry it. */}
+        {/* The cache-safety sentence on a phone, where the row cannot carry it. */}
         {safety ? (
           <p className="mb-2 flex items-start gap-1.5 text-[11.5px] leading-snug sm:hidden" style={{ color: safetyTone }}>
             <span className="mt-px shrink-0">

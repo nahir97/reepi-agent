@@ -78,7 +78,7 @@ export function SettingsPage() {
         {
           id: 'payload-report',
           label: 'Payload report',
-          hint: 'the next turn, block by block — the composer pill opens this too',
+          hint: 'the next turn, block by block — predicted hit rate, cost and saving',
           icon: IconScroll,
           run: () => openDialog({ kind: 'payload' }),
         },
