@@ -82,6 +82,11 @@ The scene state, director's notes, recalled memories and author note **churn eve
 single turn** — and that costs nothing, because they sit at the very end. Only
 touching the story bible invalidates the expensive prefix in front of them.
 
+An **agentic pass** gets the same frozen region and the same transcript, byte for
+byte, and then a single `Pass brief` block where the whole volatile tail would be.
+That is what makes a Director call a cache hit rather than a second miss — see
+[§4](#4-agents-run-side-channel-never-inline).
+
 ### 2. The transcript is one message, not N messages
 
 This is the highest-leverage decision in the codebase.
@@ -153,15 +158,21 @@ reasoning_effort: 'none'   // the only value that DISABLES thinking
 // no `tools`               // prefix stays clean and temperature is honoured
 ```
 
-and the agentic work happens in **separate contexts**:
+and the agentic work happens in **side-channel calls**:
 
-| Pass | Job | Why separate is cheaper |
+| Pass | Job | Why side-channel is cheaper |
 |---|---|---|
-| **Director** | Continuity, scene state, thread tracking, craft notes | Produces a small durable artefact reused across turns — instead of re-deriving continuity inside all of them |
+| **Director** | Continuity, scene state, thread tracking, craft notes | Composes the story with `composePass`, so its head is the narration payload byte for byte and the API serves it from the turn's own cache unit — measured at 72% hit for its first round and 94% for its second |
 | **Archivist** | Extracts durable facts into a memory index | Paid once per scene, not per turn |
-| **Summariser** | Compresses trimmed history into a rolling synopsis | Recovers what the history budget dropped, once |
+| **Summariser** | Compresses trimmed history into a rolling synopsis | Recovers what the history budget dropped — the one input that sits *behind* the shared head, so it keeps a context of its own |
 | **Conductor** | Drafts N continuations, a cheap judge picks one | See below |
 | **Creation assistant** | Writes characters, lorebooks, directive blocks, templates and whole stories from a request | Produces world material as ordinary rows — the same tables the studio's own editors write — and its tools are a side-channel call, so the prefix it re-prices is the content's, never the payload's |
+
+A pass that reads the story never builds a context of its own: `composePass` renders the
+narration head — contract, cast, persona, anchored lore, transcript window — and puts the
+pass's brief where the narration tail would be. The pass sees everything the narrator sees,
+and the bytes in front of its brief are already cached. See
+[`a pass rides the story's prefix`](.agents/notes/implemented/architecture/2026-09-23-a-pass-rides-the-story-prefix.md).
 
 ### 5. The Conductor: N drafts for barely more than one
 

@@ -4,29 +4,28 @@
  * Kept apart from the other passes because it is the only one that carries state
  * across rounds: pending tool calls, the reasoning echo the API demands, and the
  * collections it drains into the store once the loop stops.
+ *
+ * It also rides the story's own payload. `directorMode` supplies the brief that
+ * `composePass` renders where the narration's volatile tail would sit, so the
+ * contract, the cast, the anchored lore and the transcript in front of it are the
+ * same bytes the narrator sent — which is what makes a Director call a cache hit
+ * rather than a second, private miss.
  */
 
-import type { DirectorNote, ModelId, ReasoningEffort } from '../../shared/types.ts';
+import type { DirectorNote, ReasoningEffort } from '../../shared/types.ts';
 import type { DirectorResult } from '../../shared/api.ts';
+import type { PassSpec } from '../composer.ts';
 import { completeChat, type WireMessage, type WireTool } from '../deepseek.ts';
 import { messages, notes, scenes, threads } from '../store/index.ts';
-import {
-  activeScene,
-  buildTranscriptView,
-  personaNameFor,
-  recordSideCall,
-  renderTranscript,
-  requireStory,
-  type AgentContext,
-} from './context.ts';
+import { activeScene, recordSideCall, requireStory } from './context.ts';
 
 /**
- * The Director is the only place `tools` appear. It reads the scene and writes
- * structured craft notes plus scene-state updates.
+ * The Director is the pass whose tools write structure: scene state, threads and
+ * craft notes.
  *
- * Tool calls must echo `reasoning_content` on every subsequent request or the API
- * rejects the thread with a 400, so the loop tracks it even though the default
- * effort (`none`) never produces any.
+ * Tool calls must echo `reasoning_content` on every subsequent request — the API's
+ * documented requirement for any thread that carries `tools` — so the loop carries
+ * it from round to round.
  */
 export const DIRECTOR_TOOLS: WireTool[] = [
   {
@@ -98,7 +97,7 @@ export const DIRECTOR_TOOLS: WireTool[] = [
 
 export const DIRECTOR_SYSTEM = `You are a story director embedded in a collaborative fiction engine.
 
-You never write prose. You read the recent scene and leave a small number of high-value notes for the narrator who writes the next beat, and you keep the scene's factual state accurate.
+You never write prose. You read the story above and leave a small number of high-value notes for the narrator who writes the next beat, and you keep the scene's factual state accurate.
 
 Priorities, in order:
 1. Continuity. If the scene state is wrong or stale, fix it with set_scene_state.
@@ -114,39 +113,51 @@ Discipline:
 
 Call the tools you need, then stop.`;
 
+/**
+ * What the Director is told, as a pass spec for `composePass`.
+ *
+ * The transcript is deliberately absent: it is already in front of this brief, as
+ * part of the story payload the pass shares with the narrator. Repeating it here
+ * would both double the tokens and move the pass's divergence from the narration
+ * payload down to the start of the repeat.
+ */
+export function directorMode(storyId: string): PassSpec {
+  return {
+    id: 'director',
+    tail: renderDirectorBrief(storyId),
+    turn: 'Read the scene above and leave the notes it needs, then stop.',
+  };
+}
+
 export async function runDirector(
   storyId: string,
-  options: { effort?: ReasoningEffort; signal?: AbortSignal } = {},
+  options: {
+    /** The composed pass payload — see `directorMode` and `composePass`. */
+    messages: WireMessage[];
+    /** The scene the payload was composed for. Defaults to the active one. */
+    sceneId?: string | undefined;
+    effort?: ReasoningEffort;
+    signal?: AbortSignal;
+  },
 ): Promise<DirectorResult | null> {
-  const story = requireStory(storyId);
-  const scene = activeScene(storyId);
-  const view = buildTranscriptView(
-    messages.list(storyId, scene?.id),
-    personaNameFor(storyId),
-    12,
-  );
-  if (view.length === 0) return null;
+  requireStory(storyId);
+  const scene = options.sceneId
+    ? (scenes.get(options.sceneId) ?? activeScene(storyId))
+    : activeScene(storyId);
 
-  const openThreads = threads.list(storyId).filter((thread) => thread.status === 'open');
-  const context: AgentContext = {
-    story,
-    transcript: view,
-    state: scene?.state ?? [],
-    openThreads: openThreads.map((thread) => thread.label),
-    existingMemories: [],
-  };
+  const transcript = messages
+    .list(storyId, scene?.id)
+    .filter((message) => (message.variants[message.activeVariant] ?? '').trim().length > 0);
+  if (transcript.length === 0) return null;
 
-  const pending: WireMessage[] = [
-    { role: 'system', content: DIRECTOR_SYSTEM },
-    { role: 'user', content: renderDirectorBrief(context) },
-  ];
+  const pending: WireMessage[] = [...options.messages];
 
   const collected: Pick<DirectorNote, 'kind' | 'body'>[] = [];
   const stateUpdates: { key: string; value: string }[] = [];
   const threadsOpened = new Set<string>();
   const threadsClosed = new Set<string>();
   let costUsd = 0;
-  let model: ModelId = 'deepseek-flash';
+  const model = 'deepseek-flash' as const;
 
   const effort = options.effort ?? 'low';
   const MAX_ROUNDS = 3;
@@ -186,10 +197,13 @@ export async function runDirector(
 
   if (collected.length === 0 && stateUpdates.length === 0) return { notes: [], stateUpdates: [], threadsOpened: [], threadsClosed: [], costUsd };
 
-  const lastMessage = [...view].reverse().find((line) => line.role === 'assistant');
-  const anchorId = lastMessage
-    ? (messages.list(storyId, scene?.id).filter((m) => m.role === 'assistant').at(-1)?.id ?? null)
-    : null;
+  /* Notes are anchored to the newest assistant turn, so the writer sees the note
+     beside the beat it is about. */
+  const anchorId =
+    messages
+      .list(storyId, scene?.id)
+      .filter((message) => message.role === 'assistant')
+      .at(-1)?.id ?? null;
 
   for (const note of collected.slice(0, 4)) {
     notes.add({
@@ -218,23 +232,33 @@ export async function runDirector(
   };
 }
 
-export function renderDirectorBrief(context: AgentContext): string {
-  const state = context.state.length
-    ? context.state.map((field) => `- ${field.key}: ${field.value}`).join('\n')
+/**
+ * The Director's brief — everything it needs that is *not* already in the story
+ * payload it shares with the narrator: its role, the scene's recorded state, and
+ * the threads still open.
+ *
+ * The story's own material (genre, cast, contract, transcript) is in front of this
+ * text in the payload, so it is not repeated here. Drawing a second copy of the
+ * transcript is what the old brief did, and it put the pass's divergence from the
+ * narration payload at the first repeated line.
+ */
+export function renderDirectorBrief(storyId: string): string {
+  const scene = activeScene(storyId);
+  const state = scene?.state.length
+    ? scene.state.map((field) => `- ${field.key}: ${field.value}`).join('\n')
     : '(nothing recorded yet)';
-  const open = context.openThreads.length
-    ? context.openThreads.map((label) => `- ${label}`).join('\n')
-    : '(none)';
+  const open = threads
+    .list(storyId)
+    .filter((thread) => thread.status === 'open')
+    .map((thread) => `- ${thread.label}`);
+  const openText = open.length > 0 ? open.join('\n') : '(none)';
 
   return [
-    `Story: ${context.story.title}`,
-    context.story.genre ? `Genre & tone:\n${context.story.genre}` : '',
-    `\nRecorded scene state:\n${state}`,
-    `\nOpen threads:\n${open}`,
-    `\nRecent transcript:\n${renderTranscript(context.transcript)}`,
-  ]
-    .filter(Boolean)
-    .join('\n');
+    'The story above is the story as the narrator sees it. You are not the narrator in this call, and you do not write prose.',
+    DIRECTOR_SYSTEM,
+    `Recorded scene state:\n${state}`,
+    `Open threads:\n${openText}`,
+  ].join('\n\n');
 }
 
 export function applyDirectorTool(

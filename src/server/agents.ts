@@ -9,6 +9,7 @@
 
 export {
   runDirector,
+  directorMode,
   runArchivist,
   runSummarise,
   runConductor,

@@ -7,7 +7,8 @@
  * prediction tracks the API's own accounting.
  *
  * It writes to a throwaway database and spends real credit — a few tenths of a
- * cent for a three-turn run on `deepseek-flash` off-peak.
+ * cent for a three-turn run on `deepseek-flash` off-peak, plus about a cent for the
+ * Director pass it runs at the end to measure the shared prefix.
  *
  *   node --env-file=.env scripts/cache-verify.ts
  *
@@ -27,7 +28,8 @@ import { join } from 'node:path';
 
 import { closeDatabase, openDatabase } from '../src/server/db.ts';
 import { characters, ledger, lore, messages, personas, prefixes, scenes, stories } from '../src/server/store/index.ts';
-import { composeTurn } from '../src/server/orchestrator.ts';
+import { composePass, composeTurn } from '../src/server/orchestrator.ts';
+import { directorMode, runDirector } from '../src/server/agents.ts';
 import { streamChat } from '../src/server/deepseek.ts';
 import { hashContent } from '../src/shared/ids.ts';
 import { estimateTokens } from '../src/shared/tokens.ts';
@@ -196,6 +198,79 @@ for (const [index, turnText] of TURNS.entries()) {
     setTimeout(pause.resolve, 3000);
     await pause.promise;
   }
+}
+
+/* --- a pass rides the turn's prefix ----------------------------------------
+ *
+ * The claim the pass architecture rests on: a Director call composed from the same
+ * story context is served from the cache unit the narration turn just persisted,
+ * rather than paying for a private context of its own. Measured, not asserted —
+ * DeepSeek's own `prompt_cache_hit_tokens` is the only authority here.
+ *
+ * Expect a high hit rate rather than a total one. The pass's transcript is the
+ * narration's plus the turn just written, so the payload diverges where that turn
+ * was appended — the last turn's words, the pass's brief and its tool schemas are
+ * the miss, and the whole head in front of them is the hit.
+ *
+ * Rounds are printed in order. Round 1 is the design claim. Later rounds are the
+ * tool loop reusing *its own* unit, which is a different (and larger) saving: the API
+ * persists a unit at the end of the model's output as well as at the end of the
+ * input, so a round that follows another hits everything the previous round sent
+ * *and* everything it generated.
+ */
+const passPayload = composePass({
+  storyId: story.id,
+  sceneId: scene.id,
+  spec: directorMode(story.id),
+  model: 'deepseek-flash',
+  effort: 'low',
+  maxTokens: 900,
+});
+if (!passPayload) throw new Error('composePass returned null — the pass head is broken.');
+
+{
+  const pause = Promise.withResolvers<void>();
+  setTimeout(pause.resolve, 3500);
+  await pause.promise;
+}
+
+const passResult = await runDirector(story.id, { messages: passPayload.messages, effort: 'low' });
+
+const passEvents = ledger
+  .forStory(story.id, 50)
+  .filter((event) => event.kind === 'director')
+  .sort((a, b) => a.createdAt - b.createdAt);
+const passHit = passEvents.reduce((sum, event) => sum + event.cacheHitTokens, 0);
+const passMiss = passEvents.reduce((sum, event) => sum + event.cacheMissTokens, 0);
+const passInputCost = costOf(
+  'deepseek-flash',
+  { cacheHitTokens: passHit, cacheMissTokens: passMiss, outputTokens: 0 },
+  isPeak(),
+);
+const passCold = costOf(
+  'deepseek-flash',
+  { cacheHitTokens: 0, cacheMissTokens: passHit + passMiss, outputTokens: 0 },
+  isPeak(),
+);
+
+console.log('\n=== a pass rides the story prefix (Director) ===');
+console.log(`payload            ${passPayload.plan.totalTokens} tok in ${passPayload.messages.length} messages, ${passPayload.blocks.length} blocks`);
+console.log(`advertised head    ${passPayload.plan.stablePrefixTokens} tok unchanged from the narration payload`);
+for (const [index, event] of passEvents.entries()) {
+  const input = event.cacheHitTokens + event.cacheMissTokens;
+  const rate = input > 0 ? event.cacheHitTokens / input : 0;
+  console.log(
+    `  round ${index + 1}          ${event.cacheHitTokens} hit / ${event.cacheMissTokens} miss = ${(rate * 100).toFixed(1)}%   ${formatUsd(event.costUsd)}${index === 0 ? '   <- riding the narration turn\'s unit' : '   <- riding the previous round'}`,
+  );
+}
+console.log(`input cost         ${formatUsd(passInputCost)} for ${passHit + passMiss} tok   (all of it as a miss: ${formatUsd(passCold)})`);
+/* The pass's actual product, printed because the payload it now reads is the whole
+   story plus a brief that subordinates the narration contract — a cache win that
+   quietly made the Director worse would be no win at all. */
+for (const note of passResult?.notes ?? []) console.log(`  ${note.kind.padEnd(9)} ${note.body}`);
+for (const update of passResult?.stateUpdates ?? []) console.log(`  state     ${update.key} = ${update.value}`);
+if ((passResult?.notes.length ?? 0) === 0 && (passResult?.stateUpdates.length ?? 0) === 0) {
+  console.log('  (the Director left nothing — worth a look, since the scene is mid-action)');
 }
 
 const events = ledger.forStory(story.id, 50).filter((event) => event.kind === 'narration');

@@ -9,6 +9,7 @@ import {
 import { costOf, coldCostOf, isPeak, hitRate, cacheMultiplier, savedBy } from '../shared/cost.ts';
 import type {
   ChatRequest,
+  LoreHit,
   Memory,
   Message,
   ModelId,
@@ -33,7 +34,7 @@ import {
   threads,
   warmups,
 } from './store/index.ts';
-import { compose, type Composed, type ComposerInput } from './composer.ts';
+import { compose, type Composed, type ComposerInput, type PassSpec } from './composer.ts';
 import { transaction } from './db.ts';
 import { extractTerms, resolveLore, scanWindow } from './lorebook.ts';
 import { streamChat, type WireMessage, type WireTool } from './deepseek.ts';
@@ -134,22 +135,44 @@ export type TurnPayload = {
   targetWords: number;
 };
 
-export function composeTurn(request: ChatRequest): TurnPayload | null {
-  const story = stories.get(request.storyId);
+/**
+ * The story context every payload starts from: the story, the scene, the
+ * transcript window, and the lore that window resolves.
+ *
+ * It exists in one function because it now has two callers that **must** agree to
+ * the token. A narration turn and an agentic pass share a cache unit only while
+ * every byte in front of the pass's brief is identical, and the transcript window
+ * is the biggest thing in front of it — so the trim, the pinned survivors and the
+ * lore resolution are not a narration concern that a pass can approximate. A pass
+ * that computed its own window would silently miss by the length of the block it
+ * disagreed about.
+ *
+ * `immediate` is the text that may trigger lore but is not in the transcript yet —
+ * the writer's in-flight turn. A pass passes none: it has no turn of its own, and
+ * its caller is composing it between turns rather than mid-sentence.
+ */
+type TurnContext = {
+  story: Story;
+  scene: Scene;
+  history: Message[];
+  droppedCount: number;
+  loreHits: LoreHit[];
+  transcriptTexts: string[];
+};
+
+function readTurnContext(input: {
+  storyId: string;
+  sceneId?: string | undefined;
+  /** Stop before this message — how a regenerate sees the turn it replaces. */
+  messageId?: string | undefined;
+  immediate?: string[];
+}): TurnContext | null {
+  const story = stories.get(input.storyId);
   if (!story) return null;
-  const scene = request.sceneId
-    ? (scenes.get(request.sceneId) ?? activeScene(story.id))
+  const scene = input.sceneId
+    ? (scenes.get(input.sceneId) ?? activeScene(story.id))
     : activeScene(story.id);
   if (!scene) return null;
-
-  const overrides = request.overrides ?? {};
-  const calibration = readCalibration();
-  const model = overrides.model ?? story.model;
-  const effort = overrides.effort ?? story.effort;
-  const temperature = overrides.temperature ?? story.temperature;
-  const topP = overrides.topP ?? story.topP;
-  const maxTokens = overrides.maxTokens ?? story.maxTokens;
-  const targetWords = overrides.targetWords ?? story.targetWords;
 
   /* Transcript window, with hysteresis. */
 
@@ -158,13 +181,12 @@ export function composeTurn(request: ChatRequest): TurnPayload | null {
      turn: the message and everything after it are not part of the request. Keeping
      the later turns would ask the model for a beat that follows *them* rather than a
      replacement for this one. Every other verb sees the whole scene. */
-  const redoing =
-    request.mode === 'regenerate' || request.mode === 'variant' ? request.messageId : undefined;
-  const cut = redoing ? all.findIndex((message) => message.id === redoing) : -1;
+  const cut = input.messageId ? all.findIndex((message) => message.id === input.messageId) : -1;
   const live = (cut >= 0 ? all.slice(0, cut) : all).filter(
     (message) => (message.variants[message.activeVariant] ?? '').trim().length > 0,
   );
 
+  const calibration = readCalibration();
   const tokensPerMessage = live.map(
     (message) => estimateTokens(message.variants[message.activeVariant] ?? '', calibration) + 8,
   );
@@ -177,21 +199,49 @@ export function composeTurn(request: ChatRequest): TurnPayload | null {
   if (pinnedBack.length > 0) history = [...pinnedBack, ...history];
 
   const droppedCount = live.length - history.length;
+  /* Idempotent: a turn and the pass that follows it compute the same window and
+     write the same watermark, so the second write is a no-op rather than a
+     re-decision. */
   if (keepFrom !== settings.get<number>(`${WATERMARK_PREFIX}${story.id}`, 0)) {
     settings.set(`${WATERMARK_PREFIX}${story.id}`, keepFrom);
   }
 
-  /* Lore and memory — both resolved locally, no API spend. */
+  /* Lore — resolved locally, no API spend. */
 
   const transcriptTexts = history.map((message) => message.variants[message.activeVariant] ?? '');
-  const immediate = [request.text ?? '', overrides.authorNote ?? ''].filter(Boolean);
   const resolved = resolveLore({
     entries: lore.list(story.id),
     recent: scanWindow(transcriptTexts),
-    immediate,
+    immediate: input.immediate ?? [],
     budget: story.loreBudget,
   });
 
+  return { story, scene, history, droppedCount, loreHits: resolved.hits, transcriptTexts };
+}
+
+export function composeTurn(request: ChatRequest): TurnPayload | null {
+  const overrides = request.overrides ?? {};
+  const redoing =
+    request.mode === 'regenerate' || request.mode === 'variant' ? request.messageId : undefined;
+
+  const context = readTurnContext({
+    storyId: request.storyId,
+    sceneId: request.sceneId,
+    messageId: redoing,
+    immediate: [request.text ?? '', overrides.authorNote ?? ''].filter(Boolean),
+  });
+  if (!context) return null;
+
+  const { story, scene, history, droppedCount, loreHits, transcriptTexts } = context;
+  const calibration = readCalibration();
+  const model = overrides.model ?? story.model;
+  const effort = overrides.effort ?? story.effort;
+  const temperature = overrides.temperature ?? story.temperature;
+  const topP = overrides.topP ?? story.topP;
+  const maxTokens = overrides.maxTokens ?? story.maxTokens;
+  const targetWords = overrides.targetWords ?? story.targetWords;
+
+  const immediate = [request.text ?? '', overrides.authorNote ?? ''].filter(Boolean);
   let recall: { memory: Memory; score: number }[] = [];
   if (overrides.recall !== false) {
     const query = [...immediate, ...transcriptTexts.slice(-2)].join('\n');
@@ -210,7 +260,7 @@ export function composeTurn(request: ChatRequest): TurnPayload | null {
       history,
       request,
       immediate,
-      resolved: resolved.hits,
+      resolved: loreHits,
       recall,
       overrides,
       calibration,
@@ -241,6 +291,65 @@ export function composeTurn(request: ChatRequest): TurnPayload | null {
     maxTokens,
     targetWords,
   };
+}
+
+/**
+ * Compose an agentic pass's payload: the story's shared head, plus the pass's brief.
+ *
+ * This is the second caller of `readTurnContext`, and the reason it exists. A pass
+ * payload is a **prefix** of the story's narration payload — same preamble, same
+ * world, same transcript window, byte for byte — with the pass's own brief where the
+ * narration's volatile tail would be. So a Director call made right after a turn
+ * pays hit prices for everything the narrator just cached, instead of a miss on a
+ * private context of its own that nothing else will ever reuse.
+ *
+ * What it does *not* do: save a `prefixes` record. That record is the narration's
+ * memory of its own last payload, and a pass overwriting it would make the next
+ * turn diff against the wrong shape.
+ */
+export function composePass(input: {
+  storyId: string;
+  sceneId?: string | undefined;
+  spec: PassSpec;
+  model: ModelId;
+  effort: ReasoningEffort;
+  maxTokens: number;
+}): Composed | null {
+  const context = readTurnContext({ storyId: input.storyId, sceneId: input.sceneId });
+  if (!context) return null;
+
+  const { story, scene, history, loreHits } = context;
+  return compose(
+    {
+      story,
+      scene,
+      characters: castOf(story),
+      persona: resolvePersona(story),
+      messages: history,
+      loreHits,
+      /* A pass recalls nothing and notes nothing: whatever it needs to know is in
+         the head, and whatever it needs to do is in its own brief. */
+      recall: [],
+      threads: threads.list(story.id),
+      directorBrief: '',
+      authorNote: '',
+      impersonateBrief: null,
+      continueMode: false,
+      resample: true,
+      userTurn: '',
+      calibration: readCalibration(),
+      /* The plan is not what a pass is billed for — the ledger records the pass's
+         real usage — so this only shapes the estimate it reports. */
+      includeTools: false,
+      model: input.model,
+      effort: input.effort,
+      maxTokens: input.maxTokens,
+      targetWords: story.targetWords,
+      prefill: '',
+      pass: input.spec,
+    },
+    prefixes.latest(story.id),
+  );
 }
 
 type ComposerArgs = {

@@ -70,7 +70,7 @@ export function instrumentsSlice({ get, set }: Slice): Pick<Store, 'refreshInsig
       set({ busy: pass });
       try {
         if (pass === 'director') {
-          const result = await api.director(storyId);
+          const result = await api.director(storyId, { sceneId: get().activeScene()?.id });
           await get().refreshBundle({ quiet: true });
           get().toast({
             kind: 'ok',

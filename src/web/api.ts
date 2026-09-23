@@ -420,8 +420,8 @@ export const api = {
 
   warm: (storyId: string, overrides?: ChatRequest['overrides'], signal?: AbortSignal) =>
     send<WarmupResult>(`/api/stories/${enc(storyId)}/warm`, json('POST', { overrides }, signal)),
-  director: (storyId: string, effort?: ReasoningEffort, signal?: AbortSignal) =>
-    send<DirectorResult>(`/api/stories/${enc(storyId)}/director`, json('POST', { effort }, signal)),
+  director: (storyId: string, body?: { sceneId?: string; effort?: ReasoningEffort }, signal?: AbortSignal) =>
+    send<DirectorResult>(`/api/stories/${enc(storyId)}/director`, json('POST', body ?? {}, signal)),
   archivist: (storyId: string, body?: { limit?: number; sinceSeq?: number }, signal?: AbortSignal) =>
     send<ArchivistResult>(`/api/stories/${enc(storyId)}/archivist`, json('POST', body ?? {}, signal)),
   summarise: (storyId: string, signal?: AbortSignal) =>

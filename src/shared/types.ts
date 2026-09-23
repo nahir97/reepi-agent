@@ -106,6 +106,12 @@ export const BLOCK_ORDER = [
   'exemplars',
   'impersonate',
   'instruct',
+  /*
+   * The pass brief: an agentic pass's own role and instructions, and the only
+   * block that differs between a pass payload and the narration payload it rides.
+   * Last, so that a pass and a narration turn share every byte in front of it.
+   */
+  'mode',
 ] as const;
 
 export type BlockKind = (typeof BLOCK_ORDER)[number];
@@ -232,6 +238,7 @@ export const BLOCK_LABELS: Record<BlockKind, string> = {
   exemplars: 'Exemplars',
   impersonate: 'Impersonation brief',
   instruct: 'Post-history instruction',
+  mode: 'Pass brief',
 };
 
 /**
@@ -259,6 +266,7 @@ export const BLOCK_VOLATILITY: Record<BlockKind, 0 | 1 | 2 | 3> = {
   exemplars: 1,
   impersonate: 3,
   instruct: 3,
+  mode: 3,
 };
 
 /* ------------------------------------------------------------------- lore */

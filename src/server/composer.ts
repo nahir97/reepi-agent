@@ -95,7 +95,35 @@ export type ComposerInput = {
   maxTokens: number;
   targetWords: number;
   prefill: string;
+  /**
+   * Set when this payload is for an agentic pass rather than the narrator.
+   *
+   * Everything in front of the tail — the whole frozen region and the transcript —
+   * is then built exactly as the narration payload builds it, so a pass shares the
+   * story's cache unit instead of paying for a private prefix of its own. The pass
+   * supplies its own tail; the narration's (recalled memories, scene state, kept
+   * director notes, author note, post-history instruction) would all be wrong for
+   * it, since none of them address the pass's job.
+   */
+  pass?: PassSpec;
 };
+
+/**
+ * What a pass is told, and the only thing a pass payload adds to the story's head.
+ *
+ * Kept deliberately small: `tail` is the pass's role and brief, rendered as the
+ * `mode` block, and `turn` is the pass's actual task as the final user message —
+ * the same position the writer's turn occupies in a narration payload.
+ */
+export type PassSpec = {
+  /** Stable id, used in the log line and by `composePass` callers. */
+  id: string;
+  /** The pass's role and brief. Replaces the narration tail entirely. */
+  tail: string;
+  /** The pass's task, appended as the last user message. */
+  turn?: string;
+};
+
 
 export type Composed = {
   messages: WireMessage[];
@@ -126,6 +154,7 @@ const HEADINGS: Partial<Record<BlockKind, string>> = {
   exemplars: 'Style exemplars',
   impersonate: 'Impersonation brief',
   instruct: 'Instruction',
+  mode: 'This call',
 };
 
 function truncate(text: string, limit = 240): string {
@@ -201,32 +230,49 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
 
   /* ---- volatile region: everything below may churn every single turn ---- */
 
-  push('retrieval', input.recall.length
-    ? input.recall.map((item) => `- ${item.memory.text}`).join('\n')
-    : '');
-
-  push('state', renderState(scene));
-  push('director', [input.directorBrief, renderThreads(input.threads)].filter(Boolean).join('\n\n'));
-  push('lore-before', renderLore(grouped.before, 'Context for this moment:'));
-  push('lore-after', renderLore(grouped.after, 'Just revealed:'));
-  push('impersonate', input.impersonateBrief ?? '');
-
   /*
-   * The post-history instruction block: the writer's own directive, plus a cue from
-   * the verb. A regenerate gets no cue — the transcript already ends on the turn it
-   * is answering, and adding "write the next beat" would be an instruction the
-   * original call did not have. The writer's own `story.instruct` is part of the
-   * context and stays for every verb.
+   * A pass replaces this whole region with its own brief. Not because the pass
+   * could not use scene state or the writer's author note, but because every one of
+   * these blocks is addressed to the *narrator* — `instruct` in particular says
+   * "write the next beat" — and a pass is told what to do by its own tail. Keeping
+   * the narration tail and appending a pass brief after it would also move the
+   * divergence point to wherever the first of these blocks landed, which on a story
+   * with a director brief and recalled memories is several hundred tokens of the
+   * prefix the pass exists to share.
    */
-  const turnCue = input.resample
-    ? ''
-    : input.continueMode
-      ? `Continue the scene directly from where the transcript stops. Do not restate anything already written. ${input.targetWords} words.`
-      : `Write the next beat. Target ${input.targetWords} words.`;
-  const instruct = [story.instruct, turnCue].filter(Boolean).join('\n\n');
-  push('instruct', instruct);
+  const pass = input.pass;
 
-  push('author-note', input.authorNote);
+  if (!pass) {
+    const turnCue = input.resample
+      ? ''
+      : input.continueMode
+        ? `Continue the scene directly from where the transcript stops. Do not restate anything already written. ${input.targetWords} words.`
+        : `Write the next beat. Target ${input.targetWords} words.`;
+    const instruct = [story.instruct, turnCue].filter(Boolean).join('\n\n');
+
+    push('retrieval', input.recall.length
+      ? input.recall.map((item) => `- ${item.memory.text}`).join('\n')
+      : '');
+
+    push('state', renderState(scene));
+    push('director', [input.directorBrief, renderThreads(input.threads)].filter(Boolean).join('\n\n'));
+    push('lore-before', renderLore(grouped.before, 'Context for this moment:'));
+    push('lore-after', renderLore(grouped.after, 'Just revealed:'));
+    push('impersonate', input.impersonateBrief ?? '');
+
+    /*
+     * The post-history instruction block: the writer's own directive, plus a cue from
+     * the verb. A regenerate gets no cue — the transcript already ends on the turn it
+     * is answering, and adding "write the next beat" would be an instruction the
+     * original call did not have. The writer's own `story.instruct` is part of the
+     * context and stays for every verb.
+     */
+    push('instruct', instruct);
+
+    push('author-note', input.authorNote);
+  } else {
+    push('mode', pass.tail);
+  }
 
   /*
    * Depth-mounted lore.
@@ -241,10 +287,16 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
    * point that does not fragment the cached history — and `depth` orders the
    * entries within that slot (shallowest first, so the most immediate facts sit
    * closest to the model's next token). Same authoring intent, cacheable shape.
+   *
+   * A pass never gets it. Depth lore is selected for the beat the *narrator* is
+   * about to write, from the writer's in-flight turn; a pass has no such turn, and
+   * the block sits in front of the pass's own brief.
    */
-  const depthHits = input.loreHits
-    .filter((hit) => hit.position === 'depth')
-    .sort((a, b) => b.depth - a.depth);
+  const depthHits = pass
+    ? []
+    : input.loreHits
+        .filter((hit) => hit.position === 'depth')
+        .sort((a, b) => b.depth - a.depth);
   /* Depth lore rides outside the block list, so its macros are resolved here
      rather than in `push` — the writer should not have to remember which lore
      position a `{{char}}` works in. It sits in the volatile tail, so nothing
@@ -281,9 +333,17 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
   }
 
   const tail = blocks.filter((block) =>
-    ['retrieval', 'state', 'director', 'lore-before', 'lore-after', 'author-note', 'instruct', 'impersonate'].includes(
-      block.kind,
-    ),
+    [
+      'retrieval',
+      'state',
+      'director',
+      'lore-before',
+      'lore-after',
+      'author-note',
+      'instruct',
+      'impersonate',
+      'mode',
+    ].includes(block.kind),
   );
   if (tail.length > 0) {
     messages.push({ role: 'system', content: tail.map((block) => block.text).join('\n\n') });
@@ -291,13 +351,15 @@ export function compose(input: ComposerInput, previous: PrefixRecord | null): Co
 
   /* The per-turn cue. A regenerate has none: the payload ends on the context the
      original call sent — the volatile tail, or the transcript itself when the tail
-     is empty — and the model generates the beat that follows. */
-  if (input.userTurn.trim()) messages.push({ role: 'user', content: input.userTurn });
+     is empty — and the model generates the beat that follows. A pass has its own
+     task instead, in the same position. */
+  const turn = pass ? (pass.turn ?? '') : input.userTurn;
+  if (turn.trim()) messages.push({ role: 'user', content: turn });
 
   /* ---- Chat Prefix Completion ---- */
 
   let usesPrefixCompletion = false;
-  const prefill = expandMacros(input.prefill, macroContext).text;
+  const prefill = pass ? '' : expandMacros(input.prefill, macroContext).text;
   if (prefill.trim()) {
     messages.push({ role: 'assistant', content: prefill, prefix: true });
     usesPrefixCompletion = true;

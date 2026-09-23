@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import {
+  directorMode,
   estimateConductorCost,
   judgeVariants,
   runArchivist,
@@ -7,7 +8,7 @@ import {
   runDirector,
   runSummarise,
 } from '../agents.ts';
-import { composeTurn } from '../orchestrator.ts';
+import { composePass, composeTurn } from '../orchestrator.ts';
 import { ledger, warmups } from '../store/index.ts';
 import { fail, notFound, readBody, asInt, asString } from '../http.ts';
 import { completeChat } from '../deepseek.ts';
@@ -17,12 +18,12 @@ import type { ChatRequest, ModelId, ReasoningEffort } from '../../shared/types.t
 /**
  * Agentic passes.
  *
- * Every one of these runs in a **separate context** from narration. That is the
- * architecture, not a workaround: the narrator's payload stays pristine and
- * cacheable (no tools, no reasoning echo, temperature honoured), while agents do
- * their expensive thinking in their own short-lived threads and hand back a tiny
- * durable artefact. Paying for a summary once and reusing it across fifty turns is
- * strictly cheaper than re-deriving continuity inside all fifty.
+ * The narrator's payload stays pristine — no tools, temperature honoured — while the
+ * passes do their thinking in their own short-lived threads and hand back a small
+ * durable artefact. The Conductor and the Director take that one step further and
+ * **ride the story's own payload**: they compose the reader's context exactly as a
+ * narration turn does, so their input is served from the cache unit the narrator
+ * just paid for, and the only thing they add is their own brief at the tail.
  *
  * Each route reports the real `costUsd` it incurred, computed from the API's own
  * usage numbers, so the ledger stays honest.
@@ -32,10 +33,28 @@ const mod = new Hono();
 
 mod.post('/stories/:id/director', async (c) => {
   const storyId = c.req.param('id');
-  const body = await readBody<{ effort?: ReasoningEffort }>(c);
+  const body = await readBody<{ effort?: ReasoningEffort; sceneId?: string }>(c);
   const effort = body?.effort === 'none' || body?.effort === 'minimal' ? body.effort : 'low';
+  /* The scene the writer is looking at, so the pass rides the payload that scene is
+     actually sending. Without it the pass would compose for whatever scene the
+     server considers active, which is not necessarily the one on screen. */
+  const sceneId = typeof body?.sceneId === 'string' && body.sceneId ? body.sceneId : undefined;
   try {
-    const result = await runDirector(storyId, { effort });
+    /* The pass rides the story's own payload. `directorMode` is its brief, and
+       `composePass` builds everything in front of that brief exactly as a narration
+       turn builds it — so the pass is served from the cache unit the narrator is
+       already paying for rather than a private prefix of its own. */
+    const payload = composePass({
+      storyId,
+      sceneId,
+      spec: directorMode(storyId),
+      model: 'deepseek-flash',
+      effort,
+      maxTokens: 900,
+    });
+    if (!payload) return notFound(c, 'Story or scene');
+
+    const result = await runDirector(storyId, { messages: payload.messages, sceneId, effort });
     if (!result) return fail(c, 400, 'There is nothing in the transcript to direct yet.');
     return c.json(result);
   } catch (error) {

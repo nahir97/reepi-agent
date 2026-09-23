@@ -59,16 +59,6 @@ export function recordSideCall(
 /** Compact transcript view shared by every agent prompt. */
 export type TranscriptView = { role: 'user' | 'assistant'; speaker: string; text: string }[];
 
-export type AgentContext = {
-  story: Story;
-  transcript: TranscriptView;
-  /** Current scene facts, so the Director can refine rather than restate them. */
-  state: { key: string; value: string }[];
-  openThreads: string[];
-  /** Existing memory texts, so the Archivist can avoid duplicates. */
-  existingMemories: string[];
-};
-
 export function buildTranscriptView(
   messageList: readonly Message[],
   personaName: string,

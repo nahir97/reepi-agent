@@ -24,7 +24,7 @@ const { startChat, removeStoryPreservingCast } = await import('../src/server/cha
 const { recreateStoryBundle } = await import('../src/server/routes/library/bundle.ts');
 const { expandMacros, macroContextOf, macroCatalogue } = await import('../src/server/macros.ts');
 const { compose } = await import('../src/server/composer.ts');
-const { composeTurn } = await import('../src/server/orchestrator.ts');
+const { composePass, composeTurn } = await import('../src/server/orchestrator.ts');
 const { DEFAULT_CALIBRATION } = await import('../src/shared/tokens.ts');
 
 openDatabase(join(dir, 'split.sqlite'));
@@ -755,6 +755,119 @@ check('the persona PATCH path repairs one too', sanitisePersona({ avatar: jpegBa
 check('both paths refuse a non-image avatar', sanitiseCharacter({ avatar: 'portrait.png' }).rejected.length === 1 && sanitisePersona({ avatar: 'portrait.png' }).rejected.length === 1);
 check('both paths still accept null, to remove a portrait', sanitiseCharacter({ avatar: null }).patch.avatar === null && sanitisePersona({ avatar: null }).patch.avatar === null);
 check('a good data URL passes through unchanged', sanitiseCharacter({ avatar: 'data:image/webp;base64,AAAA' }).patch.avatar === 'data:image/webp;base64,AAAA');
+
+/* --- an agentic pass rides the story's own prefix --------------------------
+ *
+ * A pass is not a second context. It sends the story exactly as the narrator sends
+ * it — same preamble, same cast, same anchored lore, same transcript window — and
+ * puts its own brief where the narration tail would be. Everything in front of that
+ * brief is then the bytes the narrator just cached, which is what turns a
+ * side-channel call from a private miss into a hit.
+ *
+ * A pass that diverged anywhere in front of its brief would still work. Nothing
+ * would error; it would simply pay a second full miss every time, forever. So this
+ * is the one property worth pinning byte for byte, in both the blocks and the wire
+ * messages, and again after the transcript window has been trimmed — the trim is the
+ * part two implementations would most easily disagree about.
+ */
+openDatabase(join(dir, 'split.sqlite'));
+const passStory = stories.create({
+  title: 'Passes',
+  contract: 'You are the narrator of an ongoing collaborative story.',
+  genre: 'Genre: dark fantasy with a slow-burn political spine.',
+  style: 'Voice: close third, concrete nouns, short declaratives.',
+});
+const passScene = scenes.create(passStory.id, { title: 'Opening' });
+characters.create(passStory.id, { name: 'Augusta', description: 'Red-haired mistress of the house.' });
+lore.create(passStory.id, { title: 'The Oath', body: 'Silver scars mark every oath sworn here.', constant: true });
+messages.create({ storyId: passStory.id, sceneId: passScene.id, role: 'user', variants: ['she opens the door'], origin: 'user' });
+messages.create({ storyId: passStory.id, sceneId: passScene.id, role: 'assistant', variants: ['The latch gives.'], origin: 'narrator' });
+
+const PASS_SPEC = { id: 'director', tail: 'You are the director for this call.', turn: 'Leave your notes.' };
+const composePassHere = () =>
+  composePass({
+    storyId: passStory.id,
+    sceneId: passScene.id,
+    spec: PASS_SPEC,
+    model: 'deepseek-flash',
+    effort: 'low',
+    maxTokens: 900,
+  });
+
+/* Every block a pass and a narration turn must agree on, by kind and by hash. */
+const HEAD_KINDS = [
+  'contract', 'genre', 'style', 'story', 'scenario',
+  'cast', 'persona', 'lore-anchor', 'history',
+];
+const headOf = (blocks: { kind: string; hash: string }[] | undefined) =>
+  (blocks ?? [])
+    .filter((block) => HEAD_KINDS.includes(block.kind))
+    .map((block) => `${block.kind}:${block.hash}`);
+
+const pass = composePassHere();
+const narration = composeTurn({ storyId: passStory.id, sceneId: passScene.id, mode: 'continue' });
+
+const passHead = headOf(pass?.blocks);
+const narrationHead = headOf(narration?.composed.blocks);
+check(
+  'a pass sends the narration head byte for byte',
+  passHead.length > 4 && passHead.join('|') === narrationHead.join('|'),
+  `${passHead.length} blocks vs ${narrationHead.length}`,
+);
+
+/* The same claim where it is actually paid: the messages on the wire. A pass ends
+   with its brief where the narration payload has its post-history instruction. */
+const upToMarker = (list: { role: string; content: string | null }[], marker: string) => {
+  const at = list.findIndex((message) => String(message.content).includes(marker));
+  return at < 0 ? null : list.slice(0, at);
+};
+const passHeadMessages = upToMarker(pass?.messages ?? [], '## This call');
+const narrationHeadMessages = upToMarker(narration?.messages ?? [], '## Instruction');
+check(
+  'a pass and a narration turn send identical messages in front of the brief',
+  passHeadMessages !== null &&
+    narrationHeadMessages !== null &&
+    JSON.stringify(passHeadMessages) === JSON.stringify(narrationHeadMessages),
+);
+
+const passKinds = (pass?.blocks ?? []).map((block) => block.kind);
+check('the pass brief is the last block in the payload', passKinds.at(-1) === 'mode');
+check(
+  'a pass carries no narration tail',
+  !passKinds.some((kind) =>
+    ['retrieval', 'state', 'director', 'lore-before', 'lore-after', 'author-note', 'instruct', 'impersonate'].includes(kind),
+  ),
+  passKinds.join(','),
+);
+check(
+  'a pass carries no narration cue',
+  !(pass?.messages ?? []).some((message) => /next beat|Continue the scene/i.test(String(message.content))),
+);
+check('a pass ends on its own task', pass?.messages.at(-1)?.content === PASS_SPEC.turn);
+check('composing a pass saves no prefix record', prefixes.latest(passStory.id) === null);
+
+/* Force a window drop and re-assert: the trim is shared state, not a per-caller
+   decision, and this is where two copies of it would drift apart. */
+stories.update(passStory.id, { historyBudget: 40 });
+for (let index = 0; index < 6; index += 1) {
+  messages.create({
+    storyId: passStory.id,
+    sceneId: passScene.id,
+    role: 'assistant',
+    variants: [`Beat ${index}: the house settles, and somebody counts the silver scars again.`],
+    origin: 'narrator',
+  });
+}
+const trimmedPass = composePassHere();
+const trimmedNarration = composeTurn({ storyId: passStory.id, sceneId: passScene.id, mode: 'continue' });
+const trimmedHistory = trimmedNarration?.composed.blocks.find((block) => block.kind === 'history')?.text ?? '';
+check('the trim actually dropped a slab before the next assertion', !trimmedHistory.includes('she opens the door'));
+const trimmedPassHead = headOf(trimmedPass?.blocks);
+check(
+  'a trimmed window is still the same head for a pass and a narration turn',
+  trimmedPassHead.length > 4 && trimmedPassHead.join('|') === headOf(trimmedNarration?.composed.blocks).join('|'),
+);
+closeDatabase();
 
 /* --- the migration guard ---------------------------------------------------
  *

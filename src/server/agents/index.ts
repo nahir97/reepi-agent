@@ -4,14 +4,18 @@
  * **Design constraint that shapes everything here:** the narration request must
  * keep a pristine, cache-blastable prefix, which means it carries no `tools` and
  * no chain-of-thought (see `deepseek.ts` for why). So agents never run inline
- * with narration. They run as **side-channel calls in their own separate
- * contexts**, and their output re-enters the story as text in the *volatile tail*
- * of the next narration payload — where churn is free.
+ * with narration. They run as **side-channel calls**, and their output re-enters
+ * the story as text in the *volatile tail* of the next narration payload — where
+ * churn is free.
  *
- * That is not a workaround, it is the better architecture: an agent's job is to
- * produce a small, durable artefact (a note, a fact, a state update). Paying for
- * it once and reusing it across turns is strictly cheaper than re-deriving it
- * inside every narration call.
+ * A pass that reads the story does not build a context of its own. It composes the
+ * story with `composePass`: the narration head byte for byte, plus its own brief
+ * where the narration tail would sit, so the API serves it from the cache unit the
+ * last turn persisted instead of a private miss. The Director does that (see
+ * `.agents/notes/implemented/architecture/2026-09-23-a-pass-rides-the-story-prefix.md`).
+ * The Summariser cannot — it compresses exactly what the history window drops, which
+ * sits *behind* the head — and the Creator has no story open to ride, so those two
+ * keep a context of their own.
  *
  * Every call routes its real usage through `recordSideCall`, so the cost ledger
  * shows agentic spend separately from narration spend.
@@ -27,7 +31,6 @@ export {
   SIDE_EFFORT,
   recordSideCall,
   type TranscriptView,
-  type AgentContext,
   buildTranscriptView,
   renderTranscript,
   requireStory,
@@ -39,6 +42,7 @@ export {
 export {
   DIRECTOR_TOOLS,
   DIRECTOR_SYSTEM,
+  directorMode,
   runDirector,
   renderDirectorBrief,
   applyDirectorTool,

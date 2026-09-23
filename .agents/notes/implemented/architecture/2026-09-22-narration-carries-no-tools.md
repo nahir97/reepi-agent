@@ -37,12 +37,16 @@ The shape has three load-bearing properties:
 
 - **The narration prefix stays pristine.** No tool definitions, no tool results, no reasoning
   traces echoed back. The payload the cache depends on is never touched by an agent.
-- **Each agent pays once.** A Director call reads the recent transcript and writes a brief;
-  the next narration turn reads that brief as a small text block. The agent's own cost is
-  recorded to the ledger under its own `CostEventKind` and never recurs.
-- **Agents still share the cache.** Because they read the same frozen prefix, a Director call
-  right after a turn hits the same cache the turn did — which is why the Conductor can produce
-  three drafts for barely more than the cost of one.
+- **Each agent pays once.** The agent's own cost is recorded to the ledger under its own
+  `CostEventKind` and never recurs: what it writes is a durable artefact (a note, a memory,
+  a state update), not something the next turn has to re-derive.
+- **A pass that reads the story rides the story's cache unit.** As originally written this
+  bullet claimed every agent shared the narration prefix. That was wrong, and it is worth
+  recording how: the passes built private contexts whose first byte was their own system
+  prompt, and a prefix cache shares nothing when the first byte differs. It is true now for
+  the passes that were moved onto the story payload —
+  [a pass rides the story's prefix](2026-09-23-a-pass-rides-the-story-prefix.md) — and the
+  Conductor always had it, because it re-sends the composed payload itself.
 
 `ReasoningEffort` is likewise unrelated: narration sets `effort: 'none'` not only to avoid
 paying for thinking tokens but because **thinking mode silently ignores `temperature`**, which
@@ -101,8 +105,9 @@ state, not transcript, and belongs in its own block.
 
 ## Consequences
 
-- **Extra round-trips.** Agentic work is N calls rather than one. This is affordable exactly
-  because each hits the shared cache, and it is opt-in: nothing runs on the narration path.
+- **Extra round-trips.** Agentic work is N calls rather than one. This is affordable because
+  the passes that read the story ride its cache unit and the ones that do not are small and
+  opt-in: nothing runs on the narration path.
 - **No mid-turn tool use.** The model cannot decide to call a tool while writing prose. In
   practice this is a feature for creative writing — the narration stays a single coherent
   generation rather than being interrupted by machinery.
