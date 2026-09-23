@@ -163,7 +163,7 @@ and the agentic work happens in **side-channel calls**:
 | Pass | Job | Why side-channel is cheaper |
 |---|---|---|
 | **Director** | Continuity, scene state, thread tracking, craft notes | Composes the story with `composePass`, so its head is the narration payload byte for byte and the API serves it from the turn's own cache unit — measured at 72% hit for its first round and 94% for its second |
-| **Archivist** | Extracts durable facts into a memory index | Paid once per scene, not per turn |
+| **Archivist** | Extracts durable facts into a memory index | Runs when asked — from the rail, or switched on for every turn in the composer's panel |
 | **Summariser** | Compresses trimmed history into a rolling synopsis | Recovers what the history budget dropped — the one input that sits *behind* the shared head, so it keeps a context of its own |
 | **Conductor** | Drafts N continuations, a cheap judge picks one | See below |
 | **Creation assistant** | Writes characters, lorebooks, directive blocks, templates and whole stories from a request | Produces world material as ordinary rows — the same tables the studio's own editors write — and its tools are a side-channel call, so the prefix it re-prices is the content's, never the payload's |
@@ -173,6 +173,13 @@ narration head — contract, cast, persona, anchored lore, transcript window —
 pass's brief where the narration tail would be. The pass sees everything the narrator sees,
 and the bytes in front of its brief are already cached. See
 [`a pass rides the story's prefix`](.agents/notes/implemented/architecture/2026-09-23-a-pass-rides-the-story-prefix.md).
+
+**Director, Archivist and Conductor can be switched on for a turn** in the composer's
+*This turn only* panel. They run after the turn is written — so they read the story with
+the turn in it, and the two that share its head are served from the cache unit the turn
+just persisted. Each one reports a receipt in the transcript's agent-activity fold, with
+what it cost. See
+[`the turn's opted-in passes run after it`](.agents/notes/implemented/feature/2026-09-23-the-turns-opted-in-passes-run-after-it.md).
 
 ### 5. The Conductor: N drafts for barely more than one
 

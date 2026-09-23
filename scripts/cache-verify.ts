@@ -28,13 +28,13 @@ import { join } from 'node:path';
 
 import { closeDatabase, openDatabase } from '../src/server/db.ts';
 import { characters, ledger, lore, messages, personas, prefixes, scenes, stories } from '../src/server/store/index.ts';
-import { composePass, composeTurn } from '../src/server/orchestrator.ts';
+import { composePass, composeTurn, runTurn } from '../src/server/orchestrator.ts';
 import { directorMode, runDirector } from '../src/server/agents.ts';
 import { streamChat } from '../src/server/deepseek.ts';
 import { hashContent } from '../src/shared/ids.ts';
 import { estimateTokens } from '../src/shared/tokens.ts';
 import { costOf, coldCostOf, formatUsd, isPeak } from '../src/shared/cost.ts';
-import { DEFAULT_CONTRACT, DEFAULT_GENRE, DEFAULT_STYLE } from '../src/shared/types.ts';
+import { DEFAULT_CONTRACT, DEFAULT_GENRE, DEFAULT_STYLE, type StreamEvent } from '../src/shared/types.ts';
 
 if (!process.env.DEEPSEEK_API_KEY) {
   console.error('DEEPSEEK_API_KEY is not set. Add it to .env or export it first.');
@@ -272,6 +272,35 @@ for (const update of passResult?.stateUpdates ?? []) console.log(`  state     ${
 if ((passResult?.notes.length ?? 0) === 0 && (passResult?.stateUpdates.length ?? 0) === 0) {
   console.log('  (the Director left nothing — worth a look, since the scene is mid-action)');
 }
+
+/* --- the passes a writer switches on for a turn ------------------------------
+ *
+ * The composer's "this turn only" panel sends `overrides.director` / `.archivist` /
+ * `.conductor`, and `runTurn` runs whatever is on once the turn is written. This is
+ * the only check that exercises that wiring end to end: a real turn, the real passes,
+ * their real spend, and the receipts the writer's UI renders from the stream.
+ */
+const turnEvents: StreamEvent[] = [];
+await runTurn(
+  {
+    storyId: story.id,
+    sceneId: scene.id,
+    mode: 'send',
+    text: 'I ask him, plainly, whether the crown was ever worn at all.',
+    overrides: { director: true, archivist: true, conductor: true, conductorVariants: 2 },
+  },
+  { emit: (event) => turnEvents.push(event), signal: new AbortController().signal },
+);
+
+const receipts = turnEvents.filter((event) => event.type === 'pass');
+console.log('\n=== the passes switched on for a turn ===');
+for (const receipt of receipts) {
+  console.log(`  ${receipt.ok ? 'ok  ' : 'FAIL'} ${receipt.label.padEnd(10)} ${receipt.detail}   ${formatUsd(receipt.costUsd)}`);
+}
+const lastTurn = messages.list(story.id, scene.id).filter((message) => message.role === 'assistant').at(-1);
+console.log(`  ${receipts.length} pass(es) ran, ${receipts.filter((r) => !r.ok).length} failed`);
+console.log(`  the turn now carries ${lastTurn?.variants.length ?? 0} variant(s), #${(lastTurn?.activeVariant ?? 0) + 1} active`);
+console.log(`  ledger kinds this story: ${[...new Set(ledger.forStory(story.id, 50).map((event) => event.kind))].sort().join(', ')}`);
 
 const events = ledger.forStory(story.id, 50).filter((event) => event.kind === 'narration');
 const totalHit = events.reduce((sum, event) => sum + event.cacheHitTokens, 0);

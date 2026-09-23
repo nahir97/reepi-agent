@@ -557,14 +557,15 @@ function Overrides({ overrides, story, onChange, onReset }: OverridesProps) {
             <Toggle
               id="ov-tools"
               label="Inline tools"
-              hint="runs with thinking on"
+              hint="adds tools to this turn"
               checked={overrides.includeTools ?? false}
               onChange={(value) => set('includeTools', value)}
             />
           </div>
           <p className="mt-1.5 text-[10.5px] leading-snug text-faint">
-            These run in their own short-lived contexts. None of them touches the narration payload, which is exactly
-            why the narrator's prefix stays warm.
+            Director, Archivist and Conductor run after the turn, on the story it just wrote — the Director and the
+            Conductor read the same payload the narrator did, so they are served from the turn's own cache unit. Recall
+            and Inline tools change this turn's payload instead.
           </p>
         </div>
       </div>

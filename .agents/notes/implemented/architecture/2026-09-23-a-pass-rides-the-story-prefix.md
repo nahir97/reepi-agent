@@ -95,8 +95,10 @@ head is measured on more than one pass.
   transcript in it — and anchor its notes there.
 - Narration itself is unchanged. It is the pass that *defines* the shared prefix, so the
   passes come to it rather than it being reshaped for them.
-- The `director`, `archivist` and `conductor` toggles in the composer still read no
-  server-side code. Only the inspector's Director button reaches the route.
+- The `director`, `archivist` and `conductor` toggles in the composer do reach the
+  server: a turn with one switched on runs that pass after it writes, and the pass
+  reports a receipt. See
+  [the turn's opted-in passes run after it](../feature/2026-09-23-the-turns-opted-in-passes-run-after-it.md).
 
 ## Testing
 

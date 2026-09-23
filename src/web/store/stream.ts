@@ -7,6 +7,7 @@
  * reasoning about fetch, abort, and reconciliation.
  */
 
+import { formatUsd } from '../../shared/cost.ts';
 import type { Message, MessageOrigin, StreamEvent } from '../../shared/types.ts';
 import type { Slice } from './slice.ts';
 import { localMessage, pushLocalMessage } from './slices/helpers.ts';
@@ -41,6 +42,25 @@ export function ingest(slice: Slice, event: StreamEvent): void {
         },
       });
       return;
+    case 'pass': {
+      /* A pass ran after the turn. It is reported rather than announced: the writer
+         opted into it, and the number it cost belongs where every other number does. */
+      set({
+        streaming: {
+          ...get().streaming,
+          passes: [
+            ...get().streaming.passes,
+            { pass: event.pass, label: event.label, ok: event.ok, detail: event.detail, costUsd: event.costUsd },
+          ],
+        },
+      });
+      get().toast({
+        kind: event.ok ? 'ok' : 'error',
+        title: event.ok ? `${event.label}: ${event.detail}` : `${event.label} failed`,
+        detail: `${event.ok ? '' : event.detail + ' · '}${formatUsd(event.costUsd)}`,
+      });
+      return;
+    }
     case 'usage':
       set({ streaming: { ...get().streaming, usage: event.usage } });
       return;

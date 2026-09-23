@@ -137,6 +137,9 @@ export type Toast = {
 
 export type LiveToolEvent = { name: string; args: string; ok: boolean; summary: string };
 
+/** A receipt for an opt-in pass that ran after the turn, as the stream reported it. */
+export type LivePassEvent = { pass: string; label: string; ok: boolean; detail: string; costUsd: number };
+
 export type StreamingState = {
   active: boolean;
   mode: ChatRequest['mode'] | null;
@@ -144,6 +147,7 @@ export type StreamingState = {
   text: string;
   reasoning: string;
   tools: LiveToolEvent[];
+  passes: LivePassEvent[];
   tips: string[];
   notes: Pick<DirectorNote, 'kind' | 'body'>[];
   usage: Message['usage'];

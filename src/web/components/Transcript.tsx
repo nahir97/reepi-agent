@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { formatUsd } from '../../shared/cost.ts';
 import { useStore } from '../store.ts';
 import { Avatar } from './Avatar.tsx';
 import { MessageBubble } from './MessageBubble.tsx';
@@ -244,14 +245,14 @@ export function Transcript() {
 
             {/* Inline agentic activity. Folded by default: it is a record of what
                 the turn did, not part of the turn. */}
-            {streaming.tools.length > 0 || streaming.notes.length > 0 ? (
+            {streaming.tools.length > 0 || streaming.notes.length > 0 || streaming.passes.length > 0 ? (
               <details className="w-full rounded-lg border border-border p-2.5" style={{ background: 'var(--bg-sunken)' }}>
                 <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] text-faint select-none">
                   <IconSpark size={11} />
                   <span className="eyebrow">Agent activity this turn</span>
                   <span className="num">
-                    {streaming.tools.length + streaming.notes.length} event
-                    {streaming.tools.length + streaming.notes.length === 1 ? '' : 's'}
+                    {streaming.tools.length + streaming.notes.length + streaming.passes.length} event
+                    {streaming.tools.length + streaming.notes.length + streaming.passes.length === 1 ? '' : 's'}
                   </span>
                 </summary>
                 {streaming.tools.length > 0 ? (
@@ -262,6 +263,17 @@ export function Transcript() {
                         <span className="min-w-0 flex-1 truncate text-dim" title={tool.args}>
                           {tool.summary || tool.args}
                         </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {streaming.passes.length > 0 ? (
+                  <ul className="mt-2 space-y-1.5">
+                    {streaming.passes.map((pass, index) => (
+                      <li key={`${pass.pass}-${index}`} className="text-[12px] leading-snug text-dim">
+                        <span className={`chip mr-2 ${pass.ok ? 'chip-hit' : 'chip-miss'}`}>{pass.label}</span>
+                        {pass.detail}
+                        {pass.costUsd > 0 ? <span className="num ml-2 text-faint">{formatUsd(pass.costUsd)}</span> : null}
                       </li>
                     ))}
                   </ul>

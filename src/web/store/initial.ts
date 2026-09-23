@@ -20,6 +20,7 @@ export const IDLE_STREAM: StreamingState = {
   text: '',
   reasoning: '',
   tools: [],
+  passes: [],
   tips: [],
   notes: [],
   usage: null,

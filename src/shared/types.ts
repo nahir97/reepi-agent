@@ -759,6 +759,8 @@ export type StreamEvent =
   | { type: 'tool'; name: string; args: string; ok: boolean; summary: string }
   | { type: 'usage'; usage: MessageUsage }
   | { type: 'note'; note: Pick<DirectorNote, 'kind' | 'body'> }
+  /** A receipt for an opt-in pass that ran after the turn. */
+  | { type: 'pass'; pass: string; label: string; ok: boolean; detail: string; costUsd: number }
   | { type: 'tip'; advice: string[] }
   | { type: 'done'; messageId: string }
   | { type: 'error'; message: string }

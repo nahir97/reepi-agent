@@ -58,6 +58,8 @@ export async function runConductor(
     effort: ReasoningEffort;
     topP: number;
     maxTokens: number;
+    /** True when the payload ends on a `prefix: true` assistant message. */
+    prefixCompletion?: boolean;
   },
   options: {
     variants?: number;
@@ -83,6 +85,7 @@ export async function runConductor(
         temperature: temperatures[index % temperatures.length] ?? 1,
         topP: request.topP,
         maxTokens: request.maxTokens,
+        ...(request.prefixCompletion ? { prefixCompletion: true } : {}),
         signal: options.signal,
       },
       {},

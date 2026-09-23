@@ -38,7 +38,14 @@ import { compose, type Composed, type ComposerInput, type PassSpec } from './com
 import { transaction } from './db.ts';
 import { extractTerms, resolveLore, scanWindow } from './lorebook.ts';
 import { streamChat, type WireMessage, type WireTool } from './deepseek.ts';
-import { activeScene, personaNameFor } from './agents.ts';
+import {
+  activeScene,
+  directorMode,
+  personaNameFor,
+  runArchivist,
+  runConductor,
+  runDirector,
+} from './agents.ts';
 import { DIRECTOR_INLINE_TOOLS, applyInlineTool } from './director-tools.ts';
 
 /**
@@ -632,6 +639,21 @@ export async function runTurn(request: ChatRequest, options: TurnOptions): Promi
     payload,
     emit,
   });
+
+  /* The passes the writer switched on for this turn, once the turn is written.
+     Not when it wrote nothing: there is no beat to react to, and billing somebody for
+     three passes on top of a failed turn is the worst version of this feature. */
+  if (combinedText.trim().length > 0) {
+    await runRequestedPasses({
+      story,
+      scene,
+      payload,
+      targetId,
+      overrides: request.overrides ?? {},
+      emit,
+      signal,
+    });
+  }
 }
 
 type FinaliseArgs = {
@@ -666,9 +688,19 @@ function finalise(args: FinaliseArgs): void {
   if (isNewVariant) reasoning.push(args.reasoningText);
   else reasoning[args.variantIndex] = args.reasoningText;
 
-  // An empty generation on a brand-new message leaves nothing worth keeping.
-  if (args.text.trim().length === 0 && isNewVariant && variants.length === 1) {
-    messages.remove(args.targetId);
+  /*
+   * A generation that produced no prose at all. Say so, and leave no trace of it:
+   * a brand-new message holds nothing but its empty placeholder, so the row goes; a
+   * regenerate that failed keeps the turn it was replacing and gains no empty swipe.
+   *
+   * `existing.variants`, not `variants`: the placeholder case is the *first* variant
+   * of a fresh message, where the appended-variant branch above never runs — which is
+   * exactly the case this guard was written for.
+   */
+  if (args.text.trim().length === 0) {
+    if (existing.variants.every((variant) => variant.trim().length === 0)) {
+      messages.remove(args.targetId);
+    }
     args.emit({ type: 'error', message: 'The model returned no text.' });
     return;
   }
@@ -750,6 +782,132 @@ function finalise(args: FinaliseArgs): void {
 
   args.emit({ type: 'usage', usage: usageRecord });
   args.emit({ type: 'done', messageId: args.targetId });
+}
+
+/**
+ * The side-channel passes the writer switched on for this turn, run **after** it.
+ *
+ * After, and not during, for three reasons that are really one: a pass reads the
+ * story the turn just wrote, the turn's own payload unit is still warm (a pass that
+ * shares the story's head is served from it rather than paying a private miss), and
+ * the prose has already streamed — so a pass that fails costs the writer a receipt
+ * and never their turn.
+ *
+ * A failure is reported, not thrown: the writer asked for a turn, and the pass was
+ * an extra they opted into.
+ */
+async function runRequestedPasses(args: {
+  story: Story;
+  scene: Scene;
+  payload: TurnPayload;
+  targetId: string;
+  overrides: NonNullable<ChatRequest['overrides']>;
+  emit: Emit;
+  signal: AbortSignal;
+}): Promise<void> {
+  const { story, scene, payload, overrides, emit, signal } = args;
+  const wanted = [overrides.director, overrides.archivist, overrides.conductor].some(Boolean);
+  if (!wanted) return;
+  /* The writer pressed stop: they asked for the turn, not for three more calls. */
+  if (signal.aborted) return;
+
+  const report = (pass: string, label: string, ok: boolean, detail: string, costUsd: number) =>
+    emit({ type: 'pass', pass, label, ok, detail, costUsd });
+
+  const guard = async (
+    pass: string,
+    label: string,
+    run: () => Promise<{ detail: string; costUsd: number; ok?: boolean }>,
+  ) => {
+    try {
+      const { detail, costUsd, ok } = await run();
+      report(pass, label, ok ?? true, detail, costUsd);
+    } catch (error) {
+      report(pass, label, false, error instanceof Error ? error.message : 'failed', 0);
+    }
+  };
+
+  const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+  if (overrides.director) {
+    await guard('director', 'Director', async () => {
+      /* Rides the turn's own story head: `composePass` renders everything in front of
+         the brief exactly as the narrator did. */
+      const passPayload = composePass({
+        storyId: story.id,
+        sceneId: scene.id,
+        spec: directorMode(story.id),
+        model: payload.model,
+        effort: 'low',
+        maxTokens: 900,
+      });
+      if (!passPayload) throw new Error('no payload to direct');
+      const result = await runDirector(story.id, {
+        messages: passPayload.messages,
+        sceneId: scene.id,
+        effort: 'low',
+        signal,
+      });
+      if (!result) throw new Error('nothing to direct yet');
+      return {
+        detail: `${plural(result.notes.length, 'note', 'notes')}, ${plural(result.stateUpdates.length, 'state update', 'state updates')}`,
+        costUsd: result.costUsd,
+      };
+    });
+  }
+
+  if (overrides.archivist) {
+    await guard('archivist', 'Archivist', async () => {
+      const result = await runArchivist(story.id, { signal });
+      return { detail: plural(result.memories.length, 'memory', 'memories'), costUsd: result.costUsd };
+    });
+  }
+
+  if (overrides.conductor) {
+    await guard('conductor', 'Conductor', async () => {
+      /* The turn's own bytes, not a re-composition: the conductor's whole trick is
+         that its variants are byte-identical, and here the unit is already warm. */
+      const result = await runConductor(
+        story.id,
+        {
+          messages: payload.messages,
+          model: payload.model,
+          effort: payload.effort,
+          topP: payload.topP,
+          maxTokens: payload.maxTokens,
+          ...(payload.composed.usesPrefixCompletion ? { prefixCompletion: true } : {}),
+        },
+        { variants: overrides.conductorVariants ?? 3, signal },
+      );
+
+      /* The candidates become swipes on the turn that was just written, and the
+         judged one is what the writer sees. The text they watched arrive stays as
+         variant 0 — one swipe back, and the judge never saw it to rank it. */
+      const target = messages.get(args.targetId);
+      if (target && result.candidates.length > 0) {
+        messages.update(args.targetId, {
+          variants: [...target.variants, ...result.candidates.map((candidate) => candidate.text)],
+          reasoning: [...target.reasoning, ...result.candidates.map(() => '')],
+          activeVariant: 1 + Math.max(0, Math.min(result.chosen, result.candidates.length - 1)),
+        });
+      }
+
+      /* A pass that spent and produced nothing is a failure, not a result: the
+         writer paid for it, and "0 alternatives, kept #1" would read as success. */
+      if (result.candidates.length === 0) {
+        return { detail: 'no candidate produced text', costUsd: result.costUsd, ok: false };
+      }
+
+      /* The judge's sentence is the useful part of the receipt, but it is a
+         sentence — the fold and the toast both get a clipped copy. */
+      const note =
+        result.judgeNote.length > 140 ? `${result.judgeNote.slice(0, 139)}…` : result.judgeNote;
+      return {
+        detail: `${plural(result.candidates.length, 'alternative', 'alternatives')}, kept #${result.chosen + 1} — ${note}`,
+        costUsd: result.costUsd,
+      };
+    });
+  }
 }
 
 /* ---------------------------------------------------------------- helpers */
