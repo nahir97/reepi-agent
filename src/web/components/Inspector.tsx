@@ -30,6 +30,7 @@ import { PersonaTab } from './inspector/persona.tsx';
 import { LoreTab } from './inspector/lore.tsx';
 import { MemoryTab } from './inspector/memory.tsx';
 import { SceneTab } from './inspector/scene.tsx';
+import { TemplatesTab } from './inspector/templates.tsx';
 import { DirectorTab } from './inspector/director.tsx';
 import { IconChevronRight, IconClose } from './icons.tsx';
 
@@ -81,6 +82,8 @@ export function Inspector({ onClose }: { onClose?: () => void }) {
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {view === 'blocks' ? (
             <BlocksTab />
+          ) : view === 'templates' ? (
+            <TemplatesTab />
           ) : view === 'cast' ? (
             <CastTab />
           ) : view === 'persona' ? (

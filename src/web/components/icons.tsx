@@ -36,6 +36,14 @@ export const IconBook = (props: IconProps) => (
   </Glyph>
 );
 
+/** Discover: a needle on a rose, for "find your way to someone". */
+export const IconCompass = (props: IconProps) => (
+  <Glyph {...props}>
+    <circle cx="8" cy="8" r="5.6" />
+    <path d="M10.4 5.6 9 9l-3.4 1.4L7 7z" />
+  </Glyph>
+);
+
 export const IconFeather = (props: IconProps) => (
   <Glyph {...props}>
     <path d="M12.5 3.5c-2 0-4.5 1-6 3s-1.5 4-1.5 5.5" />

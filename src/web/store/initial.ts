@@ -51,6 +51,20 @@ export const IDLE_CREATOR: CreatorState = {
  */
 export const RAIL_KEY = 'reepi.rail';
 
+/**
+ * Where the last opened conversation is remembered.
+ *
+ * The unit of engagement in Reepi is a conversation, not the app, so a reload
+ * should land in the one the writer was in rather than in the newest story the
+ * server happens to list first. The value is a story id; an id that no longer
+ * resolves (the story was deleted in another tab) falls back to the library, and
+ * from there to the launcher.
+ *
+ * Same key-and-parser-live-beside-each-other rule as the rail above: the writer
+ * of the value and the reader of it are one screen apart, so they cannot drift.
+ */
+export const LAST_STORY_KEY = 'reepi.lastStory';
+
 export function storedRail(): boolean {
   try {
     const raw = window.localStorage.getItem(RAIL_KEY);
@@ -61,6 +75,25 @@ export function storedRail(): boolean {
   }
   // Default to closed: the transcript is the product.
   return false;
+}
+
+/** The remembered conversation id, or `null`. Never throws in private mode. */
+export function storedLastStory(): string | null {
+  try {
+    return window.localStorage.getItem(LAST_STORY_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remember the open conversation. Best-effort: private mode costs a reload. */
+export function rememberStory(storyId: string | null): void {
+  try {
+    if (storyId) window.localStorage.setItem(LAST_STORY_KEY, storyId);
+    else window.localStorage.removeItem(LAST_STORY_KEY);
+  } catch {
+    /* private mode */
+  }
 }
 
 /** Everything `Store` declares that is data rather than an action. */
@@ -99,6 +132,7 @@ export function initialState(): Omit<
   | 'removeFromCast'
   | 'setRightTab'
   | 'setRailOpen'
+  | 'setAppliedTemplate'
   | 'setPage'
   | 'setDrawer'
   | 'openDialog'
@@ -158,9 +192,10 @@ export function initialState(): Omit<
 
     theme: storedTheme(),
     railOpen: storedRail(),
-    /* Always the transcript on load. Which page you were on is not worth
-       remembering across a reload: the story is the thing you came back for. */
+    /* Always the transcript on load — or the launcher, when `boot` finds nothing
+       to open. Which page you were on is not worth remembering across a reload;
+       which *conversation* you were in is, and that lives in `LAST_STORY_KEY`. */
     page: 'story',
-    ui: { rightTab: null, drawer: null, dialog: null, palette: false, toasts: [] },
+    ui: { rightTab: null, drawer: null, dialog: null, palette: false, toasts: [], appliedTemplate: null },
   };
 }

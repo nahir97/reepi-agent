@@ -11,10 +11,9 @@
  * problem instead of hanging on a splash screen.
  */
 import { api, describeError, ApiError } from '../../api.ts';
-import { IDLE_STREAM } from '../initial.ts';
+import { IDLE_STREAM, RAIL_KEY, rememberStory, storedLastStory } from '../initial.ts';
 import { bumpStreamSeq } from '../runtime.ts';
 import { applyTheme, persistTheme, storedTheme, isTheme } from '../theme.ts';
-import { RAIL_KEY } from '../initial.ts';
 import type { Store, Drawer, RightTab, StoryStat, Toast } from '../types.ts';
 import { nowId } from './helpers.ts';
 import type { Slice } from '../slice.ts';
@@ -23,7 +22,7 @@ import type { StoryTemplateId } from '../../../shared/api.ts';
 export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setTheme' | 'setStoryTheme' | 'loadStories' | 'loadStoryStats' | 'openStory' | 'refreshBundle' |
   'createStory' | 'duplicateStory' | 'archiveStory' | 'updateStory' | 'createScene' | 'switchScene' |
   'updateScene' | 'archiveScene' | 'createCard' | 'startChatWith' | 'loadCastLibrary' | 'refreshCastLibrary' |
-  'addToCast' | 'removeFromCast' | 'setRightTab' | 'setRailOpen' | 'setPage' | 'setDrawer' |
+  'addToCast' | 'removeFromCast' | 'setRightTab' | 'setRailOpen' | 'setAppliedTemplate' | 'setPage' | 'setDrawer' |
   'openDialog' | 'setPalette' | 'toast' | 'dismissToast' | 'fail'> {
   return {
     boot: async () => {
@@ -34,8 +33,15 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       set({ theme: resolved });
       try {
         await get().loadStories();
-        const first = get().stories[0];
+        /* The unit of engagement is a conversation, so a reload returns to the
+           one the writer was in. The remembered id wins over "newest", and an id
+           that no longer resolves falls through to the newest story and then to
+           the launcher — a deleted story must not land the writer nowhere. */
+        const remembered = storedLastStory();
+        const first =
+          (remembered ? get().stories.find((story) => story.id === remembered) : undefined) ?? get().stories[0];
         if (first) await get().openStory(first.id);
+        else set({ page: 'discover' });
       } catch (error) {
         set({ offline: describeError(error) });
         get().fail(error, 'Cannot reach the Reepi server');
@@ -101,12 +107,23 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
     openStory: async (storyId) => {
       if (get().activeStoryId === storyId && get().bundle) {
         /* Re-picking the story you are already in is a request to *see* it — which
-           is what a cast page is covering, and what a drawer is over. */
+           is what a cast page is covering, and what a drawer is over. `page` moves
+           for the same reason: every host that can open a story is a page the
+           transcript should replace. */
         set({ ui: { ...get().ui, drawer: null }, page: 'story' });
+        rememberStory(storyId);
         return;
       }
       if (get().streaming.active) get().abort();
-      set({ activeStoryId: storyId, loadingBundle: true, plan: null, activeSceneId: null });
+      set({
+        activeStoryId: storyId,
+        loadingBundle: true,
+        plan: null,
+        activeSceneId: null,
+        /* The applied-template report belongs to the story that was open. A
+           different story must not inherit the claim. */
+        ui: { ...get().ui, appliedTemplate: null },
+      });
       try {
         const bundle = await api.stories.bundle(storyId);
         bumpStreamSeq();
@@ -118,12 +135,19 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
           activeSceneId: firstScene?.id ?? null,
         });
         if (bundle.story.theme !== get().theme) get().setTheme(bundle.story.theme);
-        set({ ui: { ...get().ui, drawer: null } });
+        /* Opening a story is the one gesture that always means "write here", so it
+           leaves whatever page was covering the transcript. */
+        set({ ui: { ...get().ui, drawer: null }, page: 'story' });
+        rememberStory(storyId);
         void get().refreshInsights();
         void get().loadMacros();
         void get().refreshPlan({ storyId, sceneId: firstScene?.id ?? '', mode: 'continue' });
       } catch (error) {
         set({ loadingBundle: false });
+        /* The story could not be read, so nothing is open. Land on the library
+           rather than leaving a stale transcript on screen. */
+        rememberStory(null);
+        set({ activeStoryId: null, bundle: null, page: 'discover' });
         get().fail(error, 'Could not open that story');
       }
     },
@@ -147,7 +171,7 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
     createStory: async (title, template) => {
       try {
         const story = await api.stories.create({ title, template });
-        set({ stories: [story, ...get().stories] });
+        set({ stories: [story, ...get().stories], page: 'story' });
         await get().openStory(story.id);
         get().toast({ kind: 'ok', title: 'Story created', detail: story.title });
         void get().loadStoryStats();
@@ -187,7 +211,10 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
               const stories = get().stories.filter((item) => item.id !== storyId);
               set({ stories });
               if (get().activeStoryId === storyId) {
-                set({ activeStoryId: null, bundle: null, plan: null, insights: null });
+                set({ activeStoryId: null, bundle: null, plan: null, insights: null, page: 'discover' });
+                /* The conversation that was open is gone; forget it so the next
+                   load does not try to reopen it. */
+                rememberStory(null);
                 const next = stories[0];
                 if (next) await get().openStory(next.id);
               }
@@ -359,7 +386,6 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
       const existing = get().stories.find((story) => story.characterId === characterId);
       if (existing) {
         await get().openStory(existing.id);
-        set({ page: 'story' });
         return;
       }
 
@@ -367,18 +393,16 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
         const chat = await api.characters.startChat(characterId, fromStoryId);
         set({ stories: [chat, ...get().stories] });
         await get().openStory(chat.id);
-        set({ page: 'story' });
         get().toast({ kind: 'ok', title: 'Chat open', detail: chat.title });
         void get().loadStoryStats();
       } catch (error) {
         /* A 409 means the chat exists after all — another tab, or a double click
-           that got past the lookup above. Re-read the library and open the real
-           one rather than showing a failure for a request that succeeded. */
+         * that got past the lookup above. Re-read the library and open the real
+         * one rather than showing a failure for a request that succeeded. */
         await get().loadStories().catch(() => undefined);
         const chat = get().stories.find((story) => story.characterId === characterId);
         if (chat) {
           await get().openStory(chat.id);
-          set({ page: 'story' });
           return;
         }
         get().fail(error, 'Could not start the chat');
@@ -386,6 +410,8 @@ export function librarySlice({ get, set }: Slice): Pick<Store, 'boot' | 'setThem
     },
 
     setRightTab: (rightTab) => set({ ui: { ...get().ui, rightTab } }),
+
+    setAppliedTemplate: (appliedTemplate) => set({ ui: { ...get().ui, appliedTemplate } }),
 
     /**
      * The rail's open state lives in the store rather than in `App`'s local

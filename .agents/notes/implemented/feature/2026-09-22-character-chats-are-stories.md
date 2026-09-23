@@ -168,4 +168,7 @@ chat's card could point it at a card in another story with no cascade guard.
 - **`CastPage` now has two card shapes** — a single button that opens the editor, and a card
   split into a chat body plus a footer with `Chat`/`Open chat` and a pencil. A card with two
   actions cannot be one button, and the pencil is dim rather than hover-revealed so touch keeps
-  it.
+  it. (The card body moved to `src/web/components/RosterCard.tsx` when Discover and Characters
+  joined the cast page as hosts; see
+  [Discover, Characters, Settings](2026-09-22-discover-characters-and-settings.md). Three copies of
+  one card is the drift the shared card exists to prevent.)

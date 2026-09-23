@@ -14,15 +14,15 @@
 
 import { useState } from 'react';
 import { useStore } from '../store.ts';
-import { THEME_DOT, THEME_LABEL, THEME_ORDER } from '../theme.ts';
 import { LibraryList } from './Library.tsx';
 import { StudioNav } from './StudioNav.tsx';
-import { IconBook, IconChevronDown, IconFlame, IconPlus, IconSnow } from './icons.tsx';
+import { IconBook, IconChevronDown, IconCompass, IconFlame, IconPlus, IconSnow } from './icons.tsx';
 
 export function Sidebar() {
   const bundle = useStore((state) => state.bundle);
-  const theme = useStore((state) => state.theme);
-  const setTheme = useStore((state) => state.setTheme);
+  const page = useStore((state) => state.page);
+  const setPage = useStore((state) => state.setPage);
+  const openDialog = useStore((state) => state.openDialog);
   const offline = useStore((state) => state.offline);
   const [scenesOpen, setScenesOpen] = useState(true);
 
@@ -45,6 +45,33 @@ export function Sidebar() {
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+        {/* The way in, then the list it is for. `New story` is the one action a
+            writer takes before they have anything to write in, so it is the one
+            primary button here; Discover is the destination the rail is a résumé
+            of, and it is one row rather than a second list. */}
+        <div className="space-y-1 px-2 pt-2.5">
+          <button
+            type="button"
+            className="btn btn-primary w-full justify-start gap-2"
+            style={{ padding: '0.55rem 0.7rem' }}
+            onClick={() => openDialog({ kind: 'new-story' })}
+          >
+            <IconPlus size={14} />
+            New story
+          </button>
+          <button
+            type="button"
+            className="btn w-full justify-start gap-2"
+            style={{ padding: '0.55rem 0.7rem' }}
+            onClick={() => setPage('discover')}
+            aria-current={page === 'discover'}
+            title="Every conversation and character, one gesture from either"
+          >
+            <IconCompass size={14} />
+            Discover
+          </button>
+        </div>
+
         <LibraryList />
 
         {/* ------------------------------------------------------------ studio */}
@@ -78,29 +105,19 @@ export function Sidebar() {
 
         {/* ------------------------------------------------------------ theme */}
 
-        {/* One control, not two. A story's own theme is set in its settings
-            dialog; this is the studio's. The two prose paragraphs that used to
-            explain the difference were longer than the buttons they explained. */}
-        <div className="mt-4 flex items-center gap-2 px-3 pt-3">
-          <span className="eyebrow shrink-0">Theme</span>
-          <div className="flex flex-1 items-center gap-1" role="group" aria-label="Studio theme">
-            {THEME_ORDER.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className="h-7 flex-1 rounded-md border"
-                style={{
-                  borderColor: theme === option ? 'var(--accent)' : 'var(--border)',
-                  boxShadow: theme === option ? 'inset 0 0 0 1px var(--accent)' : undefined,
-                  background: THEME_DOT[option],
-                }}
-                onClick={() => setTheme(option)}
-                aria-pressed={theme === option}
-                aria-label={`${THEME_LABEL[option]} theme`}
-                title={`${THEME_LABEL[option]} — the whole studio`}
-              />
-            ))}
-          </div>
+        {/* One control, not two, and it lives in Settings now. A story's own
+            theme is set in its settings dialog; the studio's is a setting, and
+            the rail is for navigating and writing rather than for configuring.
+            The four swatches there still preview a theme you are not in. */}
+        <div className="mt-4 border-t border-border px-3 pt-3">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 text-left"
+            onClick={() => setPage('settings')}
+          >
+            <span className="eyebrow min-w-0 flex-1 truncate">Studio settings</span>
+            <span className="shrink-0 text-[11px] font-medium text-accent">Open</span>
+          </button>
         </div>
       </div>
     </div>

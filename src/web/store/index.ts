@@ -44,6 +44,7 @@ export const useStore = create<Store>((set, get) => {
 export { IDLE_STREAM } from './initial.ts';
 export { applyTheme } from './theme.ts';
 export type {
+  AppliedTemplate,
   CreatorState,
   Dialog,
   Drawer,

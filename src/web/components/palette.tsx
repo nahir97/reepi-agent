@@ -75,6 +75,36 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         },
       },
       {
+        id: 'discover',
+        label: 'Discover',
+        hint: 'every conversation and character, one gesture from either',
+        group: 'Go',
+        run: () => {
+          setPage('discover');
+          onClose();
+        },
+      },
+      {
+        id: 'characters',
+        label: 'Characters & personas',
+        hint: 'your app-wide library, and who you are',
+        group: 'Go',
+        run: () => {
+          setPage('characters');
+          onClose();
+        },
+      },
+      {
+        id: 'settings',
+        label: 'Settings',
+        hint: 'cost, prompts, theme, transfer',
+        group: 'Go',
+        run: () => {
+          setPage('settings');
+          onClose();
+        },
+      },
+      {
         id: 'cast',
         label: 'Cast',
         hint: 'your character library, and this story’s cast',

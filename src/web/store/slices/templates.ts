@@ -94,6 +94,12 @@ export function templatesSlice({ get, set }: Slice): Pick<
       const story = get().bundle?.story;
       if (!story || !fields.every((field) => story[field] === patch[field])) return;
 
+      /* Recorded *after* the read-back, so the rail's Prompt row only ever names a
+         template whose text is really in the story. `only` narrows the copy, not
+         the record: a single-block apply is reported as such by the match count
+         the section derives, which is the honest way to say "partly applied". */
+      get().setAppliedTemplate({ templateId: template.id, name: template.name, at: Date.now() });
+
       get().toast({
         kind: 'ok',
         title: `Applied “${template.name}”`,

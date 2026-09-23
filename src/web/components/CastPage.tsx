@@ -47,13 +47,13 @@
  * page is up, because a page is not a place to write.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatTokens } from '../../shared/cost.ts';
 import type { Character, Persona, Story } from '../../shared/types.ts';
 import { useStore, type CardKind } from '../store.ts';
-import { Avatar } from './Avatar.tsx';
 import { PageBand } from './panel.tsx';
-import { IconPen, IconPlus, IconSearch, IconUser, IconUsers, IconWand } from './icons.tsx';
+import { RosterCard } from './RosterCard.tsx';
+import { IconPlus, IconSearch, IconUser, IconWand } from './icons.tsx';
 
 /* ------------------------------------------------------------------- model */
 
@@ -488,24 +488,70 @@ export function CastPage() {
                   {group.items.map((entry) => (
                     <li key={`${entry.kind}-${entry.id}`}>
                       <RosterCard
-                        entry={entry}
-                        storyTitle={bundle?.story.title ?? ''}
-                        canCast={canCast}
+                        kind={entry.kind}
+                        name={entry.name}
+                        sub={entry.sub}
+                        avatar={entry.avatar}
+                        tokens={entry.tokens}
+                        badges={
+                          entry.badge ? <span className="chip chip-hit">{entry.badge}</span> : null
+                        }
+                        chips={
+                          <>
+                            {entry.chat ? <span className="chip">in a chat</span> : null}
+                            {entry.kind === 'character' && entry.homeStoryId === null ? (
+                              <span className="chip" title="The story that wrote this card was deleted. The card outlived it.">
+                                no home story
+                              </span>
+                            ) : null}
+                            {entry.kind === 'character' && entry.castCount > 1 ? (
+                              <span className="chip" title={`Cast in ${entry.castCount} stories`}>
+                                in {entry.castCount} casts
+                              </span>
+                            ) : null}
+                          </>
+                        }
                         onEdit={() => openDialog({ kind: 'card', card: entry.kind, id: entry.id })}
                         /* Characters outside their own chat get the chat action.
                            Personas never do — they are the writer's mask, not
                            someone to talk to — and inside a chat you are already in
                            the conversation that card would open. */
-                        onChat={
+                        onOpen={
                           entry.kind === 'character' && !isChat
                             ? () => void startChatWith(entry.id, chatSourceFor(entry, storyId))
                             : null
                         }
-                        onAdd={entry.kind === 'character' && !entry.castHere ? () => void addToCast(entry.id) : null}
-                        onRemove={
-                          entry.kind === 'character' && entry.castHere && entry.homeStoryId !== storyId
-                            ? () => void removeFromCast(entry.id)
-                            : null
+                        openLabel={entry.chat ? 'Open chat' : 'Chat'}
+                        openBlockedReason={
+                          entry.kind === 'character' && entry.homeStoryId === null && !entry.castHere
+                            ? `${entry.name} cannot start a chat — the story that wrote the card was deleted.`
+                            : undefined
+                        }
+                        action={
+                          entry.kind === 'character' && !entry.castHere && canCast ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ padding: '0.25rem 0.5rem' }}
+                              onClick={() => void addToCast(entry.id)}
+                              aria-label={`Add ${entry.name} to the cast of ${bundle?.story.title ?? ''}`}
+                              title={`Add ${entry.name} to the cast of ${bundle?.story.title ?? ''}`}
+                            >
+                              <IconPlus size={11} />
+                              Add to story
+                            </button>
+                          ) : entry.kind === 'character' && entry.castHere && entry.homeStoryId !== storyId ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              style={{ padding: '0.25rem 0.5rem' }}
+                              onClick={() => void removeFromCast(entry.id)}
+                              aria-label={`Remove ${entry.name} from the cast of ${bundle?.story.title ?? ''}`}
+                              title={`Remove ${entry.name} from the cast of ${bundle?.story.title ?? ''}`}
+                            >
+                              Remove
+                            </button>
+                          ) : null
                         }
                       />
                     </li>
@@ -532,175 +578,4 @@ function chatSourceFor(entry: RosterEntry, storyId: string | null): string | und
   if (entry.homeStoryId !== null) return undefined;
   if (!storyId || !entry.castHere) return undefined;
   return storyId;
-}
-
-/* -------------------------------------------------------------- roster card */
-
-/**
- * Two card shapes, one visual language.
- *
- * With a chat action the card cannot be a single button — the pencil inside it
- * would be a button inside a button — so the top half is the button that opens
- * the conversation and the footer holds the explicit controls. Without one (a
- * persona, or a character inside its own chat) the whole card stays the single
- * button it has always been, because opening the editor is the only thing it can
- * do.
- *
- * The footer is `flex-wrap` because the library scope adds a cast control to it:
- * a card at the narrowest column would otherwise push the pencil out of the card
- * rather than onto a second line.
- *
- * The pencil is dim rather than invisible. A control revealed on hover is a
- * control a touch device never finds — the same trap the story rows were fixed
- * for.
- */
-function RosterCard({
-  entry,
-  storyTitle,
-  canCast,
-  onChat,
-  onEdit,
-  onAdd,
-  onRemove,
-}: {
-  entry: RosterEntry;
-  storyTitle: string;
-  canCast: boolean;
-  onChat: (() => void) | null;
-  onEdit: () => void;
-  onAdd: (() => void) | null;
-  onRemove: (() => void) | null;
-}) {
-  /* A card whose home story was deleted has no world to seed a chat from. It can
-     still be cast, edited and adopted — the one thing it cannot do is start a
-     conversation on its own, and saying so is better than a button that 409s. */
-  const chatBlocked = entry.kind === 'character' && entry.homeStoryId === null && !entry.castHere;
-
-  const body = (
-    <>
-      <div className="flex w-full items-start gap-2.5">
-        <Avatar name={entry.name} src={entry.avatar} size="lg" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-[14px] leading-tight font-semibold">{entry.name}</span>
-          <span className="mt-1 flex flex-wrap items-center gap-1">
-            <span className={`chip ${entry.kind === 'persona' ? 'chip-accent' : ''}`}>
-              {entry.kind === 'persona' ? 'persona' : 'character'}
-            </span>
-            {entry.badge ? <span className="chip chip-hit">{entry.badge}</span> : null}
-            {entry.chat ? <span className="chip">in a chat</span> : null}
-            {entry.kind === 'character' && entry.homeStoryId === null ? (
-              <span className="chip" title="The story that wrote this card was deleted. The card outlived it.">
-                no home story
-              </span>
-            ) : null}
-            {entry.kind === 'character' && entry.castCount > 1 ? (
-              <span className="chip" title={`Cast in ${entry.castCount} stories`}>
-                in {entry.castCount} casts
-              </span>
-            ) : null}
-          </span>
-        </span>
-        {onChat ? null : (
-          <span className="shrink-0 text-faint">
-            <IconPen size={12} />
-          </span>
-        )}
-      </div>
-
-      <p className="min-h-[2.2em] flex-1 text-[11.5px] leading-snug text-dim">{entry.sub}</p>
-    </>
-  );
-
-  const castAction =
-    onAdd && canCast ? (
-      <button
-        type="button"
-        className="btn btn-ghost"
-        style={{ padding: '0.25rem 0.5rem' }}
-        onClick={onAdd}
-        aria-label={`Add ${entry.name} to the cast of ${storyTitle}`}
-        title={`Add ${entry.name} to the cast of ${storyTitle}`}
-      >
-        <IconPlus size={11} />
-        Add to story
-      </button>
-    ) : onRemove ? (
-      <button
-        type="button"
-        className="btn btn-ghost"
-        style={{ padding: '0.25rem 0.5rem' }}
-        onClick={onRemove}
-        aria-label={`Remove ${entry.name} from the cast of ${storyTitle}`}
-        title={`Remove ${entry.name} from the cast of ${storyTitle}`}
-      >
-        Remove
-      </button>
-    ) : null;
-
-  if (!onChat) {
-    return (
-      <button
-        type="button"
-        className="card group flex h-full w-full flex-col gap-2.5 p-3 text-left transition-colors hover:border-[var(--border-strong)]"
-        style={{ background: 'var(--panel-raised)' }}
-        onClick={onEdit}
-      >
-        {body}
-        <span className="flex w-full flex-wrap items-center gap-2 border-t border-border pt-2">
-          <span className="num text-[10.5px] text-faint">{formatTokens(entry.tokens)} tok</span>
-          {castAction ? <span className="ml-auto">{castAction}</span> : null}
-          <span className={`${castAction ? '' : 'ml-auto'} text-[11px] font-medium text-accent`}>Edit</span>
-        </span>
-      </button>
-    );
-  }
-
-  return (
-    <div
-      className="card flex h-full w-full flex-col gap-2.5 p-3 transition-colors hover:border-[var(--border-strong)]"
-      style={{ background: 'var(--panel-raised)' }}
-    >
-      <button type="button" className="flex flex-col gap-2.5 text-left" onClick={onChat}>
-        {body}
-      </button>
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2">
-        <span className="num text-[10.5px] text-faint">{formatTokens(entry.tokens)} tok</span>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          {castAction}
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ padding: '0.25rem 0.5rem' }}
-            onClick={onChat}
-            disabled={chatBlocked}
-            aria-label={
-              chatBlocked
-                ? `${entry.name} cannot start a chat — the story that wrote the card was deleted`
-                : entry.chat
-                  ? `Open the chat with ${entry.name}`
-                  : `Start a chat with ${entry.name}`
-            }
-            title={
-              chatBlocked
-                ? 'This card outlived its home story. Cast it into a story, then start the chat from there.'
-                : undefined
-            }
-          >
-            <IconUsers size={11} />
-            {entry.chat ? 'Open chat' : 'Chat'}
-          </button>
-          <button
-            type="button"
-            className="icon-btn shrink-0 opacity-60 transition-opacity hover:opacity-100"
-            style={{ width: 24, height: 24 }}
-            onClick={onEdit}
-            aria-label={`Edit ${entry.name}`}
-            title={`Edit ${entry.name}`}
-          >
-            <IconPen size={12} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }

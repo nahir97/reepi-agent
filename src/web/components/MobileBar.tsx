@@ -17,12 +17,10 @@
 
 import type { ReactElement } from 'react';
 import { formatPercent, formatUsd } from '../../shared/cost.ts';
-import { useStore, type RightTab } from '../store.ts';
-import { THEME_DOT, THEME_LABEL, THEME_ORDER } from '../theme.ts';
+import { useStore, type Page, type RightTab } from '../store.ts';
 import { Avatar } from './Avatar.tsx';
 import { activePersona } from '../speakers.ts';
 import { LibraryList } from './Library.tsx';
-import { StudioNav } from './StudioNav.tsx';
 import {
   IconBook,
   IconBrain,
@@ -33,6 +31,9 @@ import {
   IconPanelRight,
   IconPen,
   IconPlus,
+  IconSettings,
+  IconUsers,
+  IconWand,
 } from './icons.tsx';
 
 export function AppHeader() {
@@ -42,6 +43,7 @@ export function AppHeader() {
   const insights = useStore((state) => state.insights);
   const streaming = useStore((state) => state.streaming.active);
   const setRightTab = useStore((state) => state.setRightTab);
+  const setPage = useStore((state) => state.setPage);
 
   return (
     <header className="topbar pt-safe gap-1.5 border-b border-border px-2" style={{ background: 'var(--panel)' }}>
@@ -55,15 +57,29 @@ export function AppHeader() {
         <IconMenu size={17} />
       </button>
 
-      <div className="min-w-0 flex-1 text-center lg:text-left">
-        <h1 className="truncate font-display text-[14px] leading-tight font-semibold">{story?.title ?? 'Reepi'}</h1>
-        <p className="num truncate text-[10px] text-faint">
-          {streaming
-            ? 'writing…'
-            : insights
-              ? `${formatUsd(insights.totals.savedUsd)} saved · ${formatPercent(insights.totals.hitRate)} cached`
-              : 'nothing written yet'}
-        </p>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        {/* The way out of a conversation, at every width. The rail is hidden
+            below `lg` and is not itself a navigation control, so without this the
+            launcher would be reachable only by editing the URL. */}
+        <button
+          type="button"
+          className="icon-btn shrink-0"
+          onClick={() => setPage('discover')}
+          aria-label="Discover — all conversations and characters"
+          title="Discover — all conversations and characters"
+        >
+          <IconBook size={15} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-display text-[14px] leading-tight font-semibold">{story?.title ?? 'Reepi'}</h1>
+          <p className="num truncate text-[10px] text-faint">
+            {streaming
+              ? 'writing…'
+              : insights
+                ? `${formatUsd(insights.totals.savedUsd)} saved · ${formatPercent(insights.totals.hitRate)} cached`
+                : 'nothing written yet'}
+          </p>
+        </div>
       </div>
 
       {/* Below `xl` the story panel is a drawer, so this is the only control that
@@ -91,11 +107,25 @@ export function AppHeader() {
 
 type NavEntry = { id: RightTab; label: string; hint: string; icon: (props: { size?: number }) => ReactElement };
 
+/**
+ * The four destinations above the library.
+ *
+ * This is where the studio's directory lives on a phone, and it is the same four
+ * rows `StudioNav` renders in the rail and on the Settings page's Content
+ * section — one vocabulary for "where can I go", three hosts.
+ */
+const DESTINATIONS: { id: Page; label: string; hint: string; icon: (props: { size?: number }) => ReactElement }[] = [
+  { id: 'discover', label: 'Discover', hint: 'every conversation and character', icon: IconBook },
+  { id: 'characters', label: 'Characters', hint: 'your library, and who you are', icon: IconUsers },
+  { id: 'creator', label: 'Creation assistant', hint: 'a chat that builds the world', icon: IconWand },
+  { id: 'settings', label: 'Settings', hint: 'cost, prompts, theme, transfer', icon: IconSettings },
+];
+
 /* The story's *sections* — what the payload is made of. Characters and personas
    are deliberately absent: they are content a writer builds rather than a slice
-   to inspect, and `StudioNav` below already lists the Cast page that builds both.
-   Listing them here as well put two rows named for the same people in one sheet,
-   which is the drift the shared list exists to prevent. */
+   to inspect, and the Characters destination above already names the page that
+   builds both. Listing them here as well put two rows named for the same people
+   in one sheet, which is the drift the shared list exists to prevent. */
 const STORY_ENTRIES: NavEntry[] = [
   { id: 'lore', label: 'World & lore', hint: 'entries that fire when their keys come up', icon: IconBook },
   { id: 'memory', label: 'Memory', hint: 'facts the story has decided to keep', icon: IconBrain },
@@ -108,8 +138,6 @@ export function NavSheet() {
   const setRightTab = useStore((state) => state.setRightTab);
   const setPage = useStore((state) => state.setPage);
   const bundle = useStore((state) => state.bundle);
-  const theme = useStore((state) => state.theme);
-  const setTheme = useStore((state) => state.setTheme);
   const switchScene = useStore((state) => state.switchScene);
   const createScene = useStore((state) => state.createScene);
   const activeSceneId = useStore((state) => state.activeSceneId);
@@ -148,6 +176,35 @@ export function NavSheet() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pb-safe">
+          {/* The four destinations the rail and the launcher both lead with, in a
+              phone's own register: labelled rows with a hint rather than a tab bar
+              of icons that say nothing. */}
+          <ul className="border-b border-border py-1">
+            {DESTINATIONS.map((entry) => {
+              const Icon = entry.icon;
+              return (
+                <li key={entry.id}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--panel-raised)]"
+                    onClick={() => {
+                      setPage(entry.id);
+                      close();
+                    }}
+                  >
+                    <span className="text-accent" aria-hidden="true">
+                      <Icon size={15} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-medium">{entry.label}</span>
+                      <span className="block truncate text-[11px] text-faint">{entry.hint}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
           {/* The library itself, in full. A phone's only route to another story. */}
           <LibraryList onPick={close} />
 
@@ -233,38 +290,10 @@ export function NavSheet() {
             ))}
           </ul>
 
-          {/* The instrument panel and the studio's other destinations, kept last
-              because they are the ones you rarely want while writing. */}
-          <div className="border-t border-border px-3 pt-3">
-            <span className="eyebrow">Studio</span>
-          </div>
-          <StudioNav onNavigate={close} />
-
-          <div className="border-t border-border px-3 pt-3 pb-4">
-            <span className="eyebrow">Theme</span>
-            <div className="mt-2 grid grid-cols-2 gap-1.5">
-              {THEME_ORDER.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  className="flex items-center gap-2 rounded-md border px-2 py-2 text-left text-[12px]"
-                  style={{
-                    borderColor: theme === id ? 'var(--accent)' : 'var(--border)',
-                    background: theme === id ? 'var(--accent-soft)' : 'transparent',
-                  }}
-                  onClick={() => setTheme(id)}
-                  aria-pressed={theme === id}
-                >
-                  <span
-                    className="h-4 w-4 shrink-0 rounded-full border border-border"
-                    style={{ background: THEME_DOT[id] }}
-                    aria-hidden="true"
-                  />
-                  {THEME_LABEL[id]}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Studio destinations used to repeat here. They are the four rows at
+              the top of this sheet now, one level up, which is what made this
+              list stop being a concatenation: a phone reaches Settings and finds
+              the theme, the transfer dialog and the ledger inside it. */}
         </div>
       </div>
     </div>

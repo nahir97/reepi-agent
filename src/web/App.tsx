@@ -24,12 +24,16 @@ import { CardEditorDialog, InsightsDialog } from './components/editors.tsx';
 import {
   ConfirmDialog,
   ImportExportDialog,
+  NewChatDialog,
   NewStoryDialog,
   PromptTemplatesDialog,
   StorySettingsDialog,
 } from './components/modals.tsx';
 import { CastPage } from './components/CastPage.tsx';
+import { CharactersPage } from './components/CharactersPage.tsx';
 import { CreatorPage } from './components/CreatorPage.tsx';
+import { DiscoverPage } from './components/DiscoverPage.tsx';
+import { SettingsPage } from './components/SettingsPage.tsx';
 import { Toasts } from './components/toast.tsx';
 import { CommandPalette } from './components/palette.tsx';
 import { IconFeather, IconPanelRight, IconPlus, IconSearch } from './components/icons.tsx';
@@ -104,7 +108,13 @@ export function App() {
         {/* --------------------------------------------------------- centre */}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          {page === 'cast' ? (
+          {page === 'discover' ? (
+            <DiscoverPage />
+          ) : page === 'characters' ? (
+            <CharactersPage />
+          ) : page === 'settings' ? (
+            <SettingsPage />
+          ) : page === 'cast' ? (
             <CastPage />
           ) : page === 'creator' ? (
             <CreatorPage />
@@ -169,6 +179,7 @@ export function App() {
       {dialog?.kind === 'story-settings' ? <StorySettingsDialog /> : null}
       {dialog?.kind === 'import-export' ? <ImportExportDialog /> : null}
       {dialog?.kind === 'new-story' ? <NewStoryDialog /> : null}
+      {dialog?.kind === 'new-chat' ? <NewChatDialog characterId={dialog.characterId} /> : null}
       {dialog?.kind === 'prompt-templates' ? <PromptTemplatesDialog /> : null}
       {dialog?.kind === 'insights' ? <InsightsDialog /> : null}
       {dialog?.kind === 'card' ? <CardEditorDialog kind={dialog.card} id={dialog.id} /> : null}
@@ -187,7 +198,7 @@ export function App() {
 
       {/* -------------------------------------------------------- onboarding */}
 
-      {booted && !bundle && !loading && page !== 'creator' ? <FirstRun /> : null}
+      {booted && !bundle && !loading && page !== 'creator' && page !== 'discover' ? <FirstRun /> : null}
 
       {!booted ? (
         <div className="fixed inset-0 z-[95] flex items-center justify-center" style={{ background: 'var(--bg)' }}>
@@ -211,12 +222,14 @@ export function App() {
 /**
  * The first-run screen. It leads with the one fact the product is built on, then
  * gets out of the way — a template, or a name, and nothing else to decide.
+ *
+ * It is reached only when the library is empty. A writer who already has
+ * conversations has Discover instead; this screen is for the one state where
+ * there is nothing to discover.
  */
 function FirstRun() {
   const openDialog = useStore((state) => state.openDialog);
   const createStory = useStore((state) => state.createStory);
-  const stories = useStore((state) => state.stories);
-  const openStory = useStore((state) => state.openStory);
   const setPage = useStore((state) => state.setPage);
 
   return (
@@ -266,16 +279,12 @@ function FirstRun() {
           <button type="button" className="btn" onClick={() => openDialog({ kind: 'import-export' })}>
             Import a card or bundle
           </button>
-          {stories.length > 0 ? (
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => void openStory((stories[0] as { id: string }).id)}
-            >
-              <IconSearch size={12} />
-              Open an existing story
-            </button>
-          ) : null}
+          {/* The launcher is the way back to everyone already written — the
+              surface this screen stopped being once Discover existed. */}
+          <button type="button" className="btn btn-ghost" onClick={() => setPage('discover')}>
+            <IconSearch size={12} />
+            Open a conversation
+          </button>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 /**
- * The library: the way in, the destinations, and the conversations.
+ * The library: the conversations, and nothing else.
  *
  * One list, rendered in two hosts — the desktop rail and the phone's navigation
  * sheet. The phone previously had no story switcher at all (the rail is
@@ -11,44 +11,31 @@
  * it has cost and saved. The day headers file it the way a writer remembers it —
  * "which was I in last night" — rather than by title.
  *
- * The creation assistant sits above the list rather than inside it. It *is* a
- * conversation — persisted, reloadable, with its own history — but it is not a
- * story and never becomes one, so filing it among the stories would be a claim
- * about it that is not true. One row, always in the same place, is how a writer
- * learns it is always there.
+ * **The creation assistant and the new-story button used to live here, and no
+ * longer do.** Both were rows at the top of a list of conversations, which put a
+ * destination and an action inside a list of things — the concatenation that made
+ * the rail hard to scan. The assistant is a destination in `StudioNav` now, and
+ * `New story` is a control the rail and the launcher both provide above the list.
+ * What is left here is what this list is actually for.
  */
 
 import { useMemo, useState } from 'react';
 import { formatPercent, formatTokens, formatUsd } from '../../shared/cost.ts';
 import { DAY_BUCKET_LABEL, DAY_BUCKET_ORDER, dayBucket, type DayBucket } from '../../shared/text.ts';
-import { TEMPLATES, type StoryTemplateId } from '../../shared/api.ts';
 import type { Story } from '../../shared/types.ts';
 import { MODELS } from '../../shared/types.ts';
 import { useStore } from '../store.ts';
 import { THEME_COVER as COVER } from '../theme.ts';
 import { StoryActions } from './StoryActions.tsx';
-import { IconClose, IconPlus, IconSearch, IconWand } from './icons.tsx';
+import { IconSearch } from './icons.tsx';
 
 export function LibraryList({ onPick }: { onPick?: () => void }) {
   const stories = useStore((state) => state.stories);
   const stats = useStore((state) => state.storyStats);
   const activeStoryId = useStore((state) => state.activeStoryId);
   const openStory = useStore((state) => state.openStory);
-  const createStory = useStore((state) => state.createStory);
-  const page = useStore((state) => state.page);
-  const setPage = useStore((state) => state.setPage);
 
-  const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState('');
-  const [template, setTemplate] = useState<StoryTemplateId>('hollow-court');
   const [query, setQuery] = useState('');
-
-  const submit = async (): Promise<void> => {
-    const chosen = title.trim() || TEMPLATES[template].seed.title || 'Untitled Story';
-    await createStory(chosen, template);
-    setTitle('');
-    setCreating(false);
-  };
 
   /* Newest first, then filed by calendar day. A search flattens the filing —
      the writer named what they wanted, so which day it happened stops mattering. */
@@ -73,69 +60,6 @@ export function LibraryList({ onPick }: { onPick?: () => void }) {
 
   return (
     <div>
-      {/* The one action a writer takes before they have anything to write in.
-          Labelled rather than a bare plus, because it is the way in. */}
-      <div className="px-2 pt-2.5">
-        <button
-          type="button"
-          className="btn btn-primary w-full justify-start gap-2"
-          style={{ padding: '0.55rem 0.7rem' }}
-          onClick={() => setCreating((value) => !value)}
-          aria-expanded={creating}
-        >
-          {creating ? <IconClose size={14} /> : <IconPlus size={14} />}
-          {creating ? 'Cancel' : 'New story'}
-        </button>
-      </div>
-
-      {creating ? (
-        <NewStoryPanel
-          title={title}
-          template={template}
-          onTitle={setTitle}
-          onTemplate={setTemplate}
-          onSubmit={() => void submit()}
-          onCancel={() => setCreating(false)}
-        />
-      ) : null}
-
-      {/* --------------------------------------------------------- assistant */}
-
-      <div className="px-1.5 pt-2">
-        <div
-          className="flex items-center gap-2 rounded-md px-1.5 py-1.5"
-          style={{
-            background: page === 'creator' ? 'var(--accent-soft)' : 'transparent',
-            boxShadow: page === 'creator' ? 'inset 2px 0 0 var(--accent)' : undefined,
-          }}
-        >
-          <button
-            type="button"
-            className="flex min-w-0 flex-1 items-center gap-2 text-left"
-            aria-current={page === 'creator'}
-            onClick={() => {
-              setPage('creator');
-              onPick?.();
-            }}
-          >
-            <span
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border text-accent"
-              aria-hidden="true"
-            >
-              <IconWand size={15} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-display text-[13px] leading-tight font-semibold">
-                Creation assistant
-              </span>
-              <span className="mt-0.5 block truncate text-[10px] text-faint">
-                an agent that builds characters, lore and worlds
-              </span>
-            </span>
-          </button>
-        </div>
-      </div>
-
       {/* ------------------------------------------------------------- search */}
 
       <div className="px-2 pt-3">
@@ -282,90 +206,5 @@ function StoryRow({
         <StoryActions story={story} />
       </div>
     </li>
-  );
-}
-
-/* ---------------------------------------------------------------- new story */
-
-type NewStoryPanelProps = {
-  title: string;
-  template: StoryTemplateId;
-  onTitle: (value: string) => void;
-  onTemplate: (value: StoryTemplateId) => void;
-  onSubmit: () => void;
-  onCancel: () => void;
-};
-
-/**
- * The inline starting-point chooser — the rail's version of the New-story dialog.
- * Blurbs come from the server's own `TEMPLATES`, so the thing described is exactly
- * the prefix the composer will build.
- */
-function NewStoryPanel({ title, template, onTitle, onTemplate, onSubmit, onCancel }: NewStoryPanelProps) {
-  const ids = Object.keys(TEMPLATES) as StoryTemplateId[];
-
-  return (
-    <form
-      className="animate-rise border-b border-border px-3 py-3"
-      style={{ background: 'var(--bg-sunken)' }}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-    >
-      <label className="label" htmlFor="new-story-title">
-        Title
-      </label>
-      <input
-        id="new-story-title"
-        className="field field-sm"
-        value={title}
-        autoFocus
-        placeholder="blank uses the starting point's own"
-        onChange={(event) => onTitle(event.target.value)}
-      />
-
-      <fieldset className="mt-2.5">
-        <legend className="label">Starting point</legend>
-        <div className="space-y-1">
-          {ids.map((id) => {
-            const entry = TEMPLATES[id];
-            const chosen = id === template;
-            return (
-              <label
-                key={id}
-                className="flex cursor-pointer items-start gap-2 rounded-md border px-2 py-1.5"
-                style={{
-                  borderColor: chosen ? 'var(--accent)' : 'var(--border)',
-                  background: chosen ? 'var(--accent-soft)' : 'transparent',
-                }}
-              >
-                <input type="radio" name="template" className="sr-only" checked={chosen} onChange={() => onTemplate(id)} />
-                <span
-                  aria-hidden="true"
-                  className="mt-1 inline-flex h-3 w-3 shrink-0 items-center justify-center rounded-full border"
-                  style={{ borderColor: chosen ? 'var(--accent)' : 'var(--border-strong)' }}
-                >
-                  {chosen ? <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--accent)' }} /> : null}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate font-display text-[12.5px] font-semibold">{entry.label}</span>
-                  <span className="mt-0.5 block text-[10.5px] leading-snug text-faint">{entry.blurb}</span>
-                </span>
-              </label>
-            );
-          })}
-        </div>
-      </fieldset>
-
-      <div className="mt-2.5 flex items-center gap-1.5">
-        <button type="submit" className="btn btn-primary" style={{ padding: '0.3rem 0.55rem' }}>
-          Create
-        </button>
-        <button type="button" className="btn btn-ghost" style={{ padding: '0.3rem 0.55rem' }} onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-    </form>
   );
 }

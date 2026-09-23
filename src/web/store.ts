@@ -12,6 +12,7 @@
 
 export { useStore } from './store/index.ts';
 export type {
+  AppliedTemplate,
   CardKind,
   CreatorState,
   Dialog,

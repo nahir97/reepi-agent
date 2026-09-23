@@ -65,15 +65,17 @@ export function CastTab() {
       ))}
 
       {/* The roster is the place to build a cast; this column is for reading what
-          it costs. One row, rather than a second copy of the page's controls. */}
+          it costs. One row, rather than a second copy of the page's controls —
+          and it names the *library*, because that is the page a writer with an
+          empty cast actually needs. */}
       <button
         type="button"
         className="btn btn-ghost w-full justify-start"
         style={{ padding: '0.3rem 0.45rem' }}
-        onClick={() => setPage('cast')}
+        onClick={() => setPage('characters')}
       >
         <IconUsers size={12} />
-        Open the cast page
+        Browse the character library
       </button>
     </div>
   );

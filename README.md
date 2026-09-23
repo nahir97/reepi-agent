@@ -220,6 +220,21 @@ click away and none of it is on the default screen.
   a card edits it in every story that casts it. Deleting a story keeps its characters and their
   conversations: the cards outlive it, and a chat keeps the persona it was using. Personas stay
   story-scoped, because "who am I here" is a question about the story.
+- **Discover is where you land.** The launcher is a roster of everyone you have written, each card
+  one gesture from a conversation — created on first use, resumed after that — with the conversations
+  you already have listed above them, and `Create`/`Import` in the band. The characters band is
+  searchable and filterable by the tags a card actually carries, and the whole studio library lives on
+  a **Characters** page beside it: characters grouped by the story that wrote them, personas grouped by
+  the pool they belong to. Stories never appear here as a second list; the rail beside it is already the
+  full, day-filed library.
+- **Settings is the directory.** Every knob the rail used to list flat — cost and cache, prompt
+  templates, story settings, transfer, duplicate, theme — is filed by subject on one page, each row
+  opening the dialog that already existed. The rail keeps `New story`, `Discover`, the conversation
+  list, the scenes of the open story, and a door into Settings.
+- **The story panel is the chat's own.** Inside a chat, the rail's front page leads with the card the
+  conversation is about, then the payload sections — including **Prompt**, which lists every saved
+  template with the blocks it would write, shows how much of the one last applied still matches the
+  story, and applies another in a single action with the repriced blocks named first.
 - **Click a character and you are talking to them.** A card's face opens a 1:1 chat — created
   on first use, reopened after that — and that chat is a real conversation: one borrowed card,
   its own transcript, its own cache prefix and cost. It inherits the story's world (contract,
@@ -227,9 +242,9 @@ click away and none of it is on the default screen.
   card's greeting. Who you are is a chip beside the composer, switchable mid-chat; switching
   re-prices the payload from the persona block on, which is the one cache cost the interface
   states before you take it. The pencil in the card's footer is still the editor.
-- **A creation assistant with its own chat.** A **Creation assistant** row sits above your stories
-  in the library rail — it is a conversation you come back to, not a dialog you summon from inside a
-  story, and it is reachable before you have a story at all. Ask it in plain language — "file a
+- **A creation assistant with its own chat.** **Creation assistant** is a destination in the rail,
+  the phone's sheet and the palette — it is a conversation you come back to, not a dialog you summon
+  from inside a story, and it is reachable before you have a story at all. Ask it in plain language — "file a
   lorebook about the drowned archive", "write two characters for the court", "start a story from
   this pitch" — and it writes into the app with real tools: character cards, lorebook entries with
   trigger keys, the scenario, story bible, genre, style, contract and instruction blocks, reusable
@@ -246,11 +261,15 @@ click away and none of it is on the default screen.
   content. It never writes prose, dialogue or your persona, and it cannot delete anything.
 - **Prompt templates and macros.** The blocks you author — voice contract, genre, style, bible,
   scenario, exemplars, instruction — can be saved as named templates and applied to any story in
-  one action, singly or several at once. Every block accepts `{{macros}}` (`{{char}}`, `{{user}}`,
+  one action, singly or several at once. The story panel's **Prompt** section is where a conversation
+  answers "which prompt am I speaking in": it names the template last applied, counts the blocks that
+  still match the story's own text, and applies another behind one confirmation that lists the blocks
+  it overwrites and flags any frozen one. Applying copies text — a story never points at a template.
+  Every block accepts `{{macros}}` (`{{char}}`, `{{user}}`,
   `{{description}}`, `{{persona}}`, `{{scenario}}`, `{{state}}`, `{{targetWords}}` and thirteen
   more) which resolve against the story **on every turn**, never baked in: a template that says
-  `{{user}}` stays correct when the persona changes. The library lives in a studio row and the
-  command palette, with a reference panel that shows each macro's live value for the open story.
+  `{{user}}` stays correct when the persona changes. The library lives in Settings and the command
+  palette, with a reference panel that shows each macro's live value for the open story.
   Five starters ship read-only; duplicating one gives you an editable copy. The agentic passes and
   their tool schemas are deliberately *not* templatable — this is the writer's system prompt, not
   the machinery.
@@ -449,11 +468,15 @@ src/
     theme.ts         theme labels and swatch gradients, one definition
     api.ts           typed client + SSE frame reader
     components/
-      Library.tsx        the conversation list, its day filing, and the assistant's own row
+      DiscoverPage.tsx   the launcher: recent conversations, the character roster, and one way into each
+      CharactersPage.tsx the app-wide library: characters by home story, personas by pool
+      SettingsPage.tsx   the directory of group rows — a hub over the dialogs that already exist
+      Library.tsx        the conversation list and its day filing
       CastPage.tsx       the cast roster, this story's and the library's, and the way into a chat
       CreatorPage.tsx    the assistant's own chat: target, receipt per turn, and the prefix it moved
-      Sidebar.tsx        the library rail: band, list, scenes, studio theme
-      StudioNav.tsx      cast / assistant / cost / settings / transfer / duplicate, one list for both hosts
+      Sidebar.tsx        the library rail: band, new story, the list, scenes, studio settings
+      StudioNav.tsx      characters / assistant / settings, one list for both hosts
+      RosterCard.tsx     the one roster card, shared by Discover, Characters and the cast page
       StoryActions.tsx   a story row's overflow menu, viewport-anchored
       Transcript.tsx     the chat feed, scroll-stick policy, streaming states
       MessageBubble.tsx  avatar + name + bubble, aligned per speaker
@@ -463,11 +486,13 @@ src/
       MacroPicker.tsx    the macro reference (live values) and the insert-a-token control
       CacheMeter.tsx     the pill, and the full payload meter behind it
       Inspector.tsx      rail chrome: the band, the menu, the open section
+      inspector/         one module per section: blocks, templates (the Prompt row), cast, persona,
+                         lore, memory, scene, director, and the menu that lists them
       panel.tsx          SectionTitle / Card / Metric / PageBand, shared by every panel and page
       editors.tsx        cost ledger + full character/persona editors
       MobileBar.tsx      app header and the navigation sheet
       modals.tsx         barrel over dialogs/
-      dialogs/           one module per dialog: story settings, prompt templates, transfer…
+      dialogs/           one module per dialog: story settings, new chat, prompt templates, transfer…
 ```
 
 Files are split when they have more than one reason to change — not to hit a line

@@ -1,80 +1,62 @@
 /**
- * The studio destinations.
+ * The studio's destinations, as a short list.
  *
- * Everything the studio does that is not writing: the cast, the cost ledger, the
- * story's own settings, import/export, and branching a story by duplicating it.
- * The library rail and the phone's navigation sheet both render this one list, so
- * a destination cannot exist in one host and be missing from the other — which is
- * exactly what had happened when only the sheet had them.
+ * This list used to carry Cast, Creation assistant, Cost & cache, Story
+ * settings, Prompt templates, Import & export and Duplicate — seven rows at the
+ * same level as the library, which is a concatenation rather than a hierarchy.
+ * A writer scanning it for "where do I change the model" learned nothing from
+ * the order, and four of the seven are things they touch twice a year.
+ *
+ * Now it is a directory, and a short one. Everything the old list reached is
+ * still reachable — Settings is the hub that files it — and this remains one list
+ * rendered in two hosts, so a destination cannot exist in the rail and be missing
+ * from the phone's sheet.
+ *
+ * **Discover is deliberately not in it.** The launcher is a primary control, and
+ * it is rendered as its own button above the library by both hosts; repeating it
+ * here would be exactly the double-listing this hierarchy exists to remove.
+ * `ENTRIES` is therefore the *rest* of the directory, and it is the same four
+ * rows minus one that the phone's sheet shows.
  *
  * `onNavigate` is the host's chance to close whatever it is inside. The rail
  * passes nothing; the sheet passes its own close.
  */
 
 import type { ReactElement } from 'react';
-import { useStore } from '../store.ts';
-import { IconChart, IconCopy, IconDownload, IconSettings, IconTemplate, IconUsers, IconWand } from './icons.tsx';
+import { useStore, type Page } from '../store.ts';
+import { IconSettings, IconUsers, IconWand } from './icons.tsx';
 
 type StudioEntry = {
+  id: Page;
   label: string;
   hint: string;
   icon: (props: { size?: number }) => ReactElement;
-  run: () => void;
 };
+
+const ENTRIES: StudioEntry[] = [
+  /* Characters sits beside the launcher as the app-wide library — personas
+     included, because "who am I when I talk to them" had no home above a single
+     story. */
+  { id: 'characters', label: 'Characters', hint: 'your library, and who you are', icon: IconUsers },
+  /* The assistant is the same material at an earlier distance: not a roster you
+     fill in, but the thing that fills one. */
+  { id: 'creator', label: 'Creation assistant', hint: 'a chat that builds characters, lore and worlds', icon: IconWand },
+  /* Everything with a knob on it, filed by subject rather than listed flat. */
+  { id: 'settings', label: 'Settings', hint: 'cost, prompts, theme, transfer', icon: IconSettings },
+];
 
 export function StudioNav({ onNavigate, compact = false }: { onNavigate?: () => void; compact?: boolean }) {
   const setPage = useStore((state) => state.setPage);
-  const openDialog = useStore((state) => state.openDialog);
-  const duplicateStory = useStore((state) => state.duplicateStory);
-  const activeStoryId = useStore((state) => state.activeStoryId);
-
-  const entries: StudioEntry[] = [
-    /* The cast comes first because it is content rather than instrumentation —
-       the one row here that builds the story instead of reporting on it. It opens
-       the cast *page*, not the payload rail's Cast section: a writer adding a
-       person should not have to reach them through the request that carries them. */
-    { label: 'Cast', hint: 'your character library, and this story’s cast', icon: IconUsers, run: () => setPage('cast') },
-    /* The assistant sits beside the cast because it is the same material at an
-       earlier distance: not a roster you fill in, but the thing that fills one. */
-    {
-      label: 'Creation assistant',
-      hint: 'its own chat — builds characters, lore, worlds and templates',
-      icon: IconWand,
-      run: () => setPage('creator'),
-    },
-    /* The ledger, not the command palette. The palette is a way to *reach* things
-       — opening it from a row labelled "Cost & cache" made the row a second
-       launcher for navigation rather than the destination it named. */
-    { label: 'Cost & cache', hint: 'spend, hit rate, what the prefix costs', icon: IconChart, run: () => openDialog({ kind: 'insights' }) },
-    { label: 'Story settings', hint: 'model, voice contract, budgets', icon: IconSettings, run: () => openDialog({ kind: 'story-settings' }) },
-    /* Templates sit beside Story settings because they are the same material at a
-       different distance: one is the blocks of *this* story, the other the text the
-       writer reuses across stories. */
-    { label: 'Prompt templates', hint: 'reusable system prompts, with macros', icon: IconTemplate, run: () => openDialog({ kind: 'prompt-templates' }) },
-    { label: 'Import & export', hint: 'cards, bundles, markdown', icon: IconDownload, run: () => openDialog({ kind: 'import-export' }) },
-  ];
-
-  /* Branching is a story-level act, so it only appears when there is a story to
-     branch. It duplicates rather than creating an empty one: a copy carries the
-     prefix layout that made the original cheap. */
-  if (activeStoryId) {
-    entries.push({
-      label: 'Duplicate story',
-      hint: 'keep this prefix, write a new branch',
-      icon: IconCopy,
-      run: () => void duplicateStory(activeStoryId),
-    });
-  }
 
   /* The rail shows these as one line each — the list below them is the point,
      and four two-line rows would push it off the first screen. The sheet has
      the room, so it keeps the hints. */
   return (
     <ul className={compact ? 'px-1.5 pt-2' : 'px-1.5'}>
-      {entries.map((entry) => {
+      {ENTRIES.map((entry) => {
         const Icon = entry.icon;
         return (
-          <li key={entry.label}>
+          <li key={entry.id}>
             <button
               type="button"
               className={
@@ -84,7 +66,7 @@ export function StudioNav({ onNavigate, compact = false }: { onNavigate?: () => 
               }
               title={entry.hint}
               onClick={() => {
-                entry.run();
+                setPage(entry.id);
                 onNavigate?.();
               }}
             >

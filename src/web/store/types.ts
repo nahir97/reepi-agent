@@ -32,7 +32,15 @@ import type {
   Theme,
 } from '../../shared/types.ts';
 
-export type RightTab = 'blocks' | 'cast' | 'persona' | 'lore' | 'memory' | 'scene' | 'director';
+export type RightTab =
+  | 'blocks'
+  | 'templates'
+  | 'cast'
+  | 'persona'
+  | 'lore'
+  | 'memory'
+  | 'scene'
+  | 'director';
 
 /**
  * What the payload rail is showing: a section, or `null` for the section menu.
@@ -45,19 +53,45 @@ export type RightTab = 'blocks' | 'cast' | 'persona' | 'lore' | 'memory' | 'scen
 export type RailView = RightTab | null;
 
 /**
+ * The template most recently applied to the open story, **this session only**.
+ *
+ * There is deliberately no `stories.template_id`: applying a prompt is a copy,
+ * and a stored reference would be a second source of truth for text the story
+ * already holds. But a writer who has just applied "House voice" should not have
+ * to remember that they did, so the rail's Prompt row reads this to say which
+ * prompt it was and how many of its blocks still match. It is cleared by
+ * `openStory`, and it survives no reload — the UI says "applied this session"
+ * rather than implying the story owns a template.
+ */
+export type AppliedTemplate = {
+  templateId: string;
+  name: string;
+  at: number;
+};
+
+/**
  * What the centre column is showing.
  *
- * `story` is the transcript — the product. `cast` and `creator` replace the centre
- * column while the writer is building rather than writing: a roster needs the
- * window to be scanned, and the creation assistant needs it for a request box and
- * the log of what it made. `null` is not a page — the story is what every other
- * surface returns to.
+ * `story` is the transcript — the product. Every other value replaces the centre
+ * column while the writer is building, choosing or configuring rather than
+ * writing: a roster needs the window to be scanned, the assistant needs it for a
+ * request box and the log of what it made, and the launcher needs it because
+ * "which conversation am I in" is a question that deserves a screen of its own.
  *
- * A page rather than a dialog because these are places you *stay*: the cast page's
- * card editor closes back to a page that never went away, and a 54rem frame
- * floating over the prose is the wrong shape for a list or a conversation.
+ * `discover` is the way *out* of a story, and the only page that is also a
+ * destination in its own right: it is where a session with nothing open lands,
+ * and where the header's home control returns to.
+ *
+ * `cast` and `characters` are deliberately two pages. `cast` is the payload
+ * roster — what this story sends, totalled in tokens; `characters` is the
+ * app-wide library, personas included, where "who am I when I talk to them" has
+ * a home above any single story.
+ *
+ * A page rather than a dialog because these are places you *stay*: a page's card
+ * editor closes back to a page that never went away, and a 54rem frame floating
+ * over the prose is the wrong shape for a list or a conversation.
  */
-export type Page = 'story' | 'cast' | 'creator';
+export type Page = 'story' | 'discover' | 'characters' | 'settings' | 'cast' | 'creator';
 
 /**
  * The creation assistant's conversation.
@@ -124,6 +158,7 @@ export type Dialog =
   | { kind: 'story-settings' }
   | { kind: 'import-export' }
   | { kind: 'new-story' }
+  | { kind: 'new-chat'; characterId: string }
   | { kind: 'prompt-templates' }
   | { kind: 'insights' }
   | { kind: 'card'; card: CardKind; id: string }
@@ -191,7 +226,15 @@ export type Store = {
   railOpen: boolean;
   /** Which page the centre column shows. `story` is the transcript. */
   page: Page;
-  ui: { rightTab: RailView; drawer: Drawer; dialog: Dialog; palette: boolean; toasts: Toast[] };
+  ui: {
+    rightTab: RailView;
+    drawer: Drawer;
+    dialog: Dialog;
+    palette: boolean;
+    toasts: Toast[];
+    /** What was applied to the open story this session. Not persisted. */
+    appliedTemplate: AppliedTemplate | null;
+  };
 
   /* ------------------------------------------------------------ actions */
   boot: () => Promise<void>;
@@ -272,6 +315,8 @@ export type Store = {
 
   setRightTab: (tab: RailView) => void;
   setRailOpen: (open: boolean) => void;
+  /** Record (or clear) the prompt applied to the open story this session. */
+  setAppliedTemplate: (applied: AppliedTemplate | null) => void;
   setPage: (page: Page) => void;
   setDrawer: (drawer: Drawer) => void;
   openDialog: (dialog: Dialog) => void;

@@ -17,6 +17,7 @@ export {
   StorySettingsDialog,
   ImportExportDialog,
   NewStoryDialog,
+  NewChatDialog,
   PromptTemplatesDialog,
   ConfirmDialog,
 } from './dialogs/index.ts';
